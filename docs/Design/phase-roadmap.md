@@ -206,6 +206,14 @@ Dedicated design file: `phase-03-lru-hits-misses-and-fills.md`
 - Supported no-eviction traces match `refCache` in verbose classification and
   total ticks.
 
+### Current status
+
+Implemented for the confirmed normal path. Strict compilation, metadata/timing
+harness, component Valgrind, and Phase 01/02 regression checks pass. Five focused
+traces match reference hit/miss classification, but traces with hits take one
+fewer tick per hit than the reference. Reference acceptance remains pending;
+see the Phase 03 record before changing the student-confirmed timing.
+
 ## Phase 04: Eviction and Dirty Write-Back
 
 Dedicated design file: `phase-04-eviction-and-dirty-write-back.md`

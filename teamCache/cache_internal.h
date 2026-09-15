@@ -10,7 +10,7 @@ typedef struct cache_line {
     bool valid;
     uint64_t tag;
     uint64_t last_access;
-    bool dirty; /* Initially false; access-time rules are a later-phase TODO. */
+    bool dirty; /* Modified in cache and not yet written back. */
 } cache_line;
 
 typedef enum cache_policy {
@@ -26,6 +26,9 @@ typedef struct cache_state {
     unsigned int b;
     size_t S;
     size_t B;
+
+    struct cache_request* active; /* Owned; NULL when no request is pending. */
+    uint64_t access_sequence;
 
     /* Configuration only until the corresponding phases are implemented. */
     cache_policy policy;
