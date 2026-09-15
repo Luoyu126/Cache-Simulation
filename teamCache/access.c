@@ -1,5 +1,6 @@
 #include "access.h"
 #include "lookup.h"
+#include "eviction.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -23,6 +24,31 @@ static void touch(cache_state* state, cache_line* line, enum op_type op)
     line->last_access = ++state->access_sequence;
     if (op == MEM_STORE)
         line->dirty = true;
+}
+
+static void fetch(cache_state* state, coher* coherence)
+{
+    cache_request* request = state->active;
+    request->status = REQUEST_WAITING_DATA;
+    if (coherence == NULL || coherence->permReq == NULL)
+        fail("missing coherence request interface");
+    if (coherence->permReq(false, block_address(state, request->op.memAddress),
+                           request->processor))
+        fail("lookup miss but coherence already grants permission; check state consistency");
+}
+
+static void trace_access(const cache_state* state, const char* outcome)
+{
+    if (!CADSS_VERBOSE)
+        return;
+    const cache_request* request = state->active;
+    uint64_t address = block_address(state, request->op.memAddress);
+    /* Match the reference's null-address spelling without pointer casts. */
+    if (address == 0)
+        printf("[%d] Address: (nil) is a %s\n", request->processor, outcome);
+    else
+        printf("[%d] Address: 0x%" PRIx64 " is a %s\n",
+               request->processor, address, outcome);
 }
 
 void cache_access_request(cache_state* state, coher* coherence,
@@ -49,52 +75,53 @@ void cache_access_request(cache_state* state, coher* coherence,
     state->active = request;
 
     cache_line* line = cache_lookup(state, op->memAddress);
-    if (CADSS_VERBOSE)
-        printf("[%d] Address: 0x%" PRIx64 " is a %s\n", processor,
-               block_address(state, op->memAddress), line != NULL ? "Hit" : "Miss");
     if (line != NULL)
     {
+        trace_access(state, "Hit");
         touch(state, line, request->op.op);
         request->status = REQUEST_READY;
         return;
     }
 
-    if (coherence == NULL || coherence->permReq == NULL)
-        fail("missing coherence request interface");
-    if (coherence->permReq(false, block_address(state, request->op.memAddress),
-                           request->processor))
-        fail("lookup miss but coherence already grants permission; check state consistency");
+    bool waiting = cache_eviction_prepare(state, coherence);
+    trace_access(state, request->status == REQUEST_WAITING_EVICTION
+                 ? (request->target->dirty ? "Dirty Evict" : "Evict") : "Miss");
+    if (!waiting)
+        fetch(state, coherence);
 }
 
-void cache_access_event(cache_state* state, int type, int processor,
+void cache_access_event(cache_state* state, coher* coherence, int type, int processor,
                         uint64_t address)
 {
+    cache_request* request = state->active;
+    bool matching_eviction = request != NULL
+        && request->status == REQUEST_WAITING_EVICTION
+        && request->processor == processor && request->victim_address == address;
+    if (type == FLUSH_COMPLETE || (type == NO_ACTION && matching_eviction))
+    {
+        if (!matching_eviction)
+            fail("eviction event does not match the waiting request");
+        cache_eviction_complete(state);
+        fetch(state, coherence);
+        return;
+    }
     if (type == NO_ACTION)
         return;
     if (type != DATA_RECV)
-        fail("unsupported coherence event in Phase 03");
-    cache_request* request = state->active;
+        fail("unsupported coherence event");
     if (request == NULL || request->status != REQUEST_WAITING_DATA
         || request->processor != processor
         || block_address(state, request->op.memAddress) != address)
         fail("data event does not match the waiting request");
 
-    uint64_t block_number = address >> state->b;
-    size_t set_index = (size_t)(block_number & ((uint64_t)state->S - 1));
-    for (size_t way = 0; way < state->E; ++way)
-    {
-        cache_line* line = state->sets[set_index][way];
-        if (!line->valid)
-        {
-            line->tag = block_number >> state->s;
-            line->dirty = false;
-            touch(state, line, request->op.op);
-            line->valid = true;
-            request->status = REQUEST_READY;
-            return;
-        }
-    }
-    fail("full-set miss requires Phase 04 eviction");
+    cache_line* line = request->target;
+    if (line == NULL || line->valid)
+        fail("fill target is not available");
+    line->tag = (address >> state->b) >> state->s;
+    line->dirty = false;
+    touch(state, line, request->op.op);
+    line->valid = true;
+    request->status = REQUEST_READY;
 }
 
 void cache_access_tick(cache_state* state, coher* coherence)

@@ -239,6 +239,15 @@ Dedicated design file: `phase-04-eviction-and-dirty-write-back.md`
 - Targeted conflict traces and applicable local traces match `refCache` in
   classifications and total ticks.
 
+### Current status
+
+Implemented and locally checked: set-local LRU, delayed/immediate eviction,
+victim preservation, refill ordering, and pending-request cleanup pass. Clean
+and dirty conflict traces match reference at 506 ticks; mixed hit/eviction
+classification matches with only the inherited Phase 03 hit-timing difference.
+Full reference acceptance remains pending that clarification. Details and
+reproduction commands are in the Phase 04 design record.
+
 ## Phase 05: Variable-Size and Split-Line Accesses
 
 Dedicated design file: `phase-05-variable-size-and-split-line-accesses.md`

@@ -51,7 +51,7 @@ cache* init(cache_sim_args* csa)
 
 void coherCallback(int type, int procNum, int64_t addr)
 {
-    cache_access_event(&state, type, procNum, (uint64_t)addr);
+    cache_access_event(&state, coherComp, type, procNum, (uint64_t)addr);
 }
 
 void memoryRequest(trace_op* op, int processorNum, int64_t tag,

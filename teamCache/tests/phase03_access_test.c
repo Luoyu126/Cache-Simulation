@@ -12,6 +12,7 @@
 cache* init(cache_sim_args* args);
 
 static cache_state state;
+static coher lower;
 static void (*event_callback)(int, int, int64_t);
 static unsigned int lower_ticks, requests, completions, delivery_tick;
 static unsigned int completion_tick;
@@ -26,7 +27,7 @@ static void register_callback(void (*callback)(int, int, int64_t))
 
 static void direct_event(int type, int processor, int64_t address)
 {
-    cache_access_event(&state, type, processor, (uint64_t)address);
+    cache_access_event(&state, &lower, type, processor, (uint64_t)address);
 }
 
 static uint8_t permission(uint8_t is_read, uint64_t address, int processor)
@@ -126,7 +127,7 @@ int main(void)
     issue(MEM_LOAD, 0x18, 101);
     assert(requested_address == 0x10 && requests == 1);
     assert(cache_lookup(&state, 0x18) == NULL);
-    cache_access_event(&state, NO_ACTION, 7, 0x10);
+    cache_access_event(&state, &lower, NO_ACTION, 7, 0x10);
     assert(state.active->status == REQUEST_WAITING_DATA);
     finish_miss(101);
     cache_line* a = cache_lookup(&state, 0x10);

@@ -11,6 +11,12 @@ Professor Railing about the timing interpretation. The English Ed draft is saved
 in `docs/ed-cache-hit-timing-question.md`; it has not been posted or sent by the
 agent. Current code retains next-cache-tick hit completion pending clarification.
 
+Phase 04 integration note: the internal event handler now also receives the
+borrowed coherence pointer, allowing a completed eviction to issue a fetch.
+Its existing tests use that signature. Builds linking access.c must also link
+eviction.c; historical Phase 03 commands below describe the earlier snapshot.
+Hit timing and dirty/access-sequence expectations are unchanged.
+
 ## Implementation Readiness Review
 
 ### Latest student correction: reference hit timing is the target
