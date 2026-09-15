@@ -42,7 +42,7 @@ Phase 00  Project Scaffold                              [Implemented]
     |
 Phase 01  Initialization and Lifecycle                 [Accepted locally]
     |
-Phase 02  Address Decoding and Lookup
+Phase 02  Address Decoding and Lookup                  [Accepted locally]
     |
 Phase 03  LRU Hits, Misses, and Fills
     |
@@ -130,11 +130,11 @@ Dedicated design file: `phase-02-address-decoding-and-lookup.md`
 
 ### Scope
 
-- Derive block address, block number, set index, tag, and block offset from a
-  64-bit byte address.
+- Derive set index and tag from a 64-bit byte address. Block number may be a
+  local intermediate; block start address and offset are not lookup outputs.
 - Map a `(set, way)` pair to the allocated line storage.
 - Search only the selected set for a valid matching tag.
-- Identify an invalid line without performing a fill.
+- Return a borrowed matching-line pointer on hit, or NULL on miss.
 
 ### Non-goals
 
@@ -143,13 +143,35 @@ Dedicated design file: `phase-02-address-decoding-and-lookup.md`
 
 ### Expected acceptance behavior
 
-- With `b=4`, `0x10` and `0x18` decode to the same block address and tag/set
-  identity but different offsets.
+- With `b=4`, `0x10` and `0x18` have the same tag/set identity and find the
+  same resident line despite their different positions within the block.
 - Addresses mapping to the same set but different tags are distinguished.
 - `s=0` correctly models a single set.
 - High 64-bit addresses are decoded without truncation or signed arithmetic.
 - Lookup returns a hit only when both valid and tag match in the selected set.
-- Lookup and invalid-line discovery do not modify cache contents.
+- Lookup does not modify cache contents or select an invalid line/victim.
+
+### Current status
+
+Implemented in `teamCache/lookup.c` and locally accepted: all 18 seeded-state
+lookup checks pass, including read-only snapshots and high-address cases;
+Valgrind reports no errors or leaks. The rebuilt library loads in the real
+engine for an empty trace. Request-path integration belongs to Phase 03.
+See `phase-02-address-decoding-and-lookup.md` for commands and evidence.
+
+### Scope refinement
+
+During Phase 02 design review, the student requested keeping block start
+addresses out of lookup because they are not needed for its current task.
+Their calculation is deferred to later hierarchy/eviction/split-access modules
+when needed. This replaces the original five-quantity decoding deliverable;
+same-block relationships remain part of decoding acceptance.
+
+The student subsequently confirmed hit-only lookup returning a line pointer or
+NULL. Offset computation is deferred to its consumers; invalid-line selection
+moves to the fill path in Phase 03, with full-set eviction added in Phase 04.
+Reason: keep lookup responsible only for locating an already-resident block
+and keep placement choices together. No placement timing algorithm is implied.
 
 ## Phase 03: LRU Hits, Misses, and Fills
 
@@ -163,6 +185,8 @@ Dedicated design file: `phase-03-lru-hits-misses-and-fills.md`
 - Implement cache hits and LRU metadata updates.
 - On a miss with an available invalid line, request permission/data through
   coherence, wait for completion, and install the block.
+- Find the available invalid line in this phase's placement path, separately
+  from hit lookup. Full-set victim selection remains Phase 04.
 - Notify the processor exactly once at the required later tick.
 
 ### Non-goals
