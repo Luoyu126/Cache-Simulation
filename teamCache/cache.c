@@ -1,7 +1,9 @@
 #include <cache.h>
 #include <trace.h>
 
-#include <getopt.h>
+#include "lifecycle.h"
+
+#include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <stdbool.h>
@@ -12,13 +14,15 @@ typedef struct _pendingRequest {
     void (*memCallback)(int, int64_t);
 } pendingRequest;
 
-cache* self = NULL;
-coher* coherComp = NULL;
+/* The state object lives here; lifecycle.c only borrows its address. */
+static cache_state state = {0};
+static cache* self = NULL;
+static coher* coherComp = NULL;
 
 int processorCount = 1;
 int CADSS_VERBOSE = 0;
-pendingRequest pending = {0};
-int countDown = 0;
+static pendingRequest pending = {0};
+static int countDown = 0;
 
 void memoryRequest(trace_op* op, int processorNum, int64_t tag,
                    void (*callback)(int, int64_t));
@@ -26,47 +30,37 @@ void coherCallback(int type, int procNum, int64_t addr);
 
 cache* init(cache_sim_args* csa)
 {
-    int op;
-
-    // TODO - get argument list from assignment
-    while ((op = getopt(csa->arg_count, csa->arg_list, "E:s:b:i:R:")) != -1)
+    if (self != NULL || csa == NULL || csa->coherComp == NULL
+        || csa->coherComp->registerCacheInterface == NULL
+        || csa->coherComp->si.tick == NULL)
     {
-        switch (op)
-        {
-            // Lines per set
-            case 'E':
-                break;
-
-            // Sets per cache
-            case 's':
-                break;
-
-            // block size in bits
-            case 'b':
-                break;
-
-            // entries in victim cache
-            case 'i':
-                break;
-
-            // bits in a RRIP-based replacement policy
-            case 'R':
-                break;
-        }
+        fprintf(stderr, "teamCache: invalid coherence interface or already initialized\n");
+        return NULL;
     }
+    if (!cache_storage_init(&state, csa))
+        return NULL;
 
-    self = malloc(sizeof(cache));
+    self = calloc(1, sizeof(*self));
+    if (self == NULL)
+    {
+        fprintf(stderr, "teamCache: public interface allocation failed\n");
+        cache_storage_destroy(&state);
+        return NULL;
+    }
     self->memoryRequest = memoryRequest;
     self->si.tick = tick;
     self->si.finish = finish;
     self->si.destroy = destroy;
 
     coherComp = csa->coherComp;
+    pending = (pendingRequest){0};
+    countDown = 0;
     coherComp->registerCacheInterface(coherCallback);
 
     return self;
 }
 
+// Starter access behavior below is intentionally deferred to later phases.
 // This routine is a linkage to the rest of the memory hierarchy
 void coherCallback(int type, int procNum, int64_t addr)
 {
@@ -136,6 +130,11 @@ int finish(int outFd)
 
 int destroy(void)
 {
-    // free any internally allocated memory here
+    cache_storage_destroy(&state);
+    free(self);
+    self = NULL;
+    coherComp = NULL; /* Borrowed from the framework, never freed here. */
+    pending = (pendingRequest){0};
+    countDown = 0;
     return 0;
 }
