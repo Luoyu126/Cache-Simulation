@@ -39,6 +39,12 @@ present on `master`. For implementation-only submission work, use the
 report preparation, use `develop`, which already contains both the same
 implementation history and its documentation.
 
+Because only `teamCache/` was synchronized, `master` does not contain
+`develop`'s root `CMakeLists.txt` registration or `submission` update. The
+normal whole-project build command below therefore applies directly on
+`develop`; a standalone `master` validation must compile/link `teamCache/`
+explicitly or place it into the course submission framework.
+
 Do not infer current behavior only from old discussion sections. In each phase
 record, read the status, latest confirmed contract, implementation mapping, and
 latest observed results. Historical proposals are retained and marked
@@ -199,9 +205,11 @@ Passing reference comparisons:
 
 Items Phase 09 must revisit:
 
-1. `phase-05-variable-size-and-split-line-accesses.md` records a historical
-   split-eviction discrepancy for an `E=1` minimal reproduction. Re-run it
-   after all later timing fixes and preserve the new result.
+1. The Phase 05 `E=1` split-eviction discrepancy was re-run from final
+   `master` commit `bbfe7b0` and persists: `teamCache` reports the later block
+   as `Evict` at 305 ticks; `refCache` reports it as `Hit` at 204 ticks. Resolve
+   the specification/reference conflict before claiming complete differential
+   compatibility.
 2. Add a reference-comparable RRIP conflict trace that forces aging and victim
    selection; the current RRIP reference trace does not force every internal
    rule.
@@ -423,7 +431,8 @@ Every numeric claim should be traceable to a raw file and derivation script.
 8. Implement the candidate generator and storage filter.
 9. Run a small sample matrix and inspect raw artifacts before launching the
    full search.
-10. Re-run the Phase 05 split-eviction MRE.
+10. Resolve or explicitly report the confirmed Phase 05 split-eviction
+    reference conflict.
 11. Mark this phase `Implemented` only when scripts/results exist and
     `Accepted` only when all roadmap acceptance behaviors pass.
 
@@ -432,4 +441,13 @@ Every numeric claim should be traceable to a raw file and derivation script.
 - Handoff created after Phase 08 commit `a590e06`.
 - No Phase 09 experiment scripts, candidate manifests, or report results exist
   yet.
-- Current implementation branch: `develop`.
+- The implementation is on both `develop` and `master`; design documentation
+  remains on `develop`.
+- `teamCache/` was copied without `docs/` to `master` and pushed as commit
+  `bbfe7b0`.
+- On that `master` commit, all Phase 01--08 strict C11 harnesses pass. All
+  eight harnesses also pass Valgrind with leak/error failures enabled.
+- Reference checks match for the Phase 03 hit case, clean/dirty Phase 04
+  conflicts, set-local LRU, `wide.trace`, RRIP `load.trace`, and
+  `wb-test.trace`. The Phase 05 discrepancy above is the remaining checked
+  mismatch.

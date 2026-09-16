@@ -441,16 +441,17 @@ matches at 202 ticks.
 
 ## Reference Difference: Split Eviction
 
-With `s=0,E=1,b=4`, `L 0,1; L f,2` produces identical verbose text in both
-components, including the special later-half line. teamCache takes 304 ticks;
-refCache takes 204. The confirmed teamCache design hits block 0x00, then
-independently misses block 0x10 and runs the Phase 04 eviction/data path.
-The reference's 204 tick outcome does not show that additional delay despite
-printing the later-half line. This conflicts with the roadmap requirement that
-both halves independently produce required miss/eviction effects. No change
-was made to suppress teamCache's second-block eviction merely to match this
-binary observation. Phase 05 remains Partial pending specification/reference
-clarification.
+The final implementation was rechecked from `master` commit `bbfe7b0` with
+`s=0,E=1,b=4` and `L 0,1; L f,2`. `teamCache` takes 305 ticks and reports the
+later block `0x10` as `also a Evict`; `refCache` takes 204 ticks and reports it
+as `also a Hit`. Both processes exit successfully.
+
+The confirmed teamCache design hits block 0x00, then independently misses block
+0x10 and runs the Phase 04 eviction/data path. The reference's result suppresses
+that second-block replacement. This conflicts with the roadmap requirement
+that both halves independently produce required miss/eviction effects. No
+change was made merely to reproduce this binary observation. Phase 05 remains
+Partial pending specification/reference clarification.
 
 ## Phase 08 Regression Discovery
 
