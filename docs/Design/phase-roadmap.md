@@ -52,7 +52,7 @@ Phase 05  Variable-Size and Split-Line Accesses
     |
 Phase 06  RRIP Replacement                              [Implemented]
     |
-Phase 07  Request Queueing
+Phase 07  Request Queueing                              [Accepted locally]
     |
 Phase 08  Single-Entry Write Buffer
     |
@@ -329,6 +329,14 @@ Dedicated design file: `phase-07-request-queueing.md`
 - Destroying the simulator releases queued request storage.
 - Multi-request targeted tests complete without loss, duplication, deadlock,
   or state leakage.
+
+### Current status
+
+Implemented and locally accepted: an outer arrival-order FIFO retains complete
+original requests while the existing Phase 05 inner FIFO serializes only the
+current request's blocks. Same-tick successor start, later completion,
+identity preservation, split ordering, destruction, Phase 01--06 regressions,
+and Valgrind all pass. Details are in the Phase 07 design record.
 
 ## Phase 08: Single-Entry Write Buffer
 

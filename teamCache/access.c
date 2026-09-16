@@ -2,6 +2,7 @@
 #include "lookup.h"
 #include "eviction.h"
 #include "replacement.h"
+#include "request_queue.h"
 #include "split.h"
 
 #include <inttypes.h>
@@ -82,6 +83,26 @@ static void start_next_block(cache_state* state, coher* coherence)
         fetch(state, coherence);
 }
 
+static bool current_request_idle(const cache_state* state)
+{
+    return state->active == NULL && state->completion == NULL
+        && state->queue_head == NULL && state->queue_tail == NULL;
+}
+
+static void start_next_request(cache_state* state, coher* coherence)
+{
+    if (!current_request_idle(state) || state->request_queue_head == NULL)
+        return;
+
+    original_request* request = cache_request_take(state);
+    const char* error = cache_split_prepare(state, &request->op,
+        request->processor, request->request_tag, request->callback);
+    free(request);
+    if (error != NULL)
+        fail(error);
+    start_next_block(state, coherence);
+}
+
 void cache_access_request(cache_state* state, coher* coherence,
                           const trace_op* op, int processor, int64_t tag,
                           void (*callback)(int, int64_t))
@@ -89,15 +110,12 @@ void cache_access_request(cache_state* state, coher* coherence,
     if (op == NULL || callback == NULL || processor < 0
         || (op->op != MEM_LOAD && op->op != MEM_STORE) || op->size <= 0)
         fail("invalid memory request");
-    if (state->active != NULL || state->completion != NULL
-        || state->queue_head != NULL)
-        fail("overlapping requests require Phase 07 queueing");
     if (state->write_buffer_mode != 0)
         fail("write-buffer accesses belong to Phase 08");
-    const char* error = cache_split_prepare(state, op, processor, tag, callback);
+    const char* error = cache_request_enqueue(state, op, processor, tag, callback);
     if (error != NULL)
         fail(error);
-    start_next_block(state, coherence);
+    start_next_request(state, coherence);
 }
 
 void cache_access_event(cache_state* state, coher* coherence, int type, int processor,
@@ -143,7 +161,10 @@ void cache_access_tick(cache_state* state, coher* coherence)
         /* Detach before calling external code; this completion occurs once. */
         state->active = NULL;
         if (cache_split_complete(state, request))
+        {
             request->callback(request->processor, request->request_tag);
+            start_next_request(state, coherence);
+        }
         else
             start_next_block(state, coherence);
         /* A new active hit is not retired again in this tick. */
@@ -158,4 +179,5 @@ void cache_access_destroy(cache_state* state)
     free(state->active);
     state->active = NULL;
     cache_split_destroy(state);
+    cache_request_queue_destroy(state);
 }
