@@ -74,6 +74,9 @@ static void issue(enum op_type op, uint64_t address, int size, int64_t tag)
 {
     trace_op request = {.op = op, .memAddress = address, .size = size};
     cache_access_request(&state, &lower, &request, 3, tag, complete);
+    assert(state.active == NULL && state.request_queue_head != NULL);
+    cache_access_tick(&state, &lower); /* Start on the next cache tick. */
+    assert(state.active != NULL);
 }
 
 static void drain(int64_t tag)
@@ -93,7 +96,6 @@ int main(int argc, char** argv)
     issue(MEM_LOAD, 0x1f, 2, 91);
     assert(fetches == 1 && fetch_address[0] == 0x10);
     assert(state.queue_head != NULL && state.queue_head->op.memAddress == 0x20);
-    cache_access_tick(&state, &lower);
     cache_access_tick(&state, &lower); /* Low data arrives; READY. */
     assert(state.active->status == REQUEST_READY && completions == 0);
     cache_access_tick(&state, &lower); /* Retire low and start high. */

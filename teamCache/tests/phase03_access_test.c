@@ -77,6 +77,9 @@ static void issue(enum op_type kind, uint64_t address, int64_t tag)
     /* Caller-owned storage disappears immediately, as in processor.c. */
     free(op);
     assert(completions == before);
+    assert(state.active == NULL && state.request_queue_head != NULL);
+    cache_access_tick(&state, &lower); /* Start on the next cache tick. */
+    assert(completions == before && state.active != NULL);
 }
 
 static void finish_miss(int64_t tag)
@@ -84,13 +87,10 @@ static void finish_miss(int64_t tag)
     unsigned int before = completions;
     unsigned int sent = requests;
     uint64_t sequence = state.access_sequence;
-    for (int i = 0; i < 2; ++i)
-    {
-        cache_access_tick(&state, &lower);
-        assert(state.active->status == REQUEST_WAITING_DATA);
-        assert(state.access_sequence == sequence && completions == before);
-        assert(requests == sent);
-    }
+    cache_access_tick(&state, &lower);
+    assert(state.active->status == REQUEST_WAITING_DATA);
+    assert(state.access_sequence == sequence && completions == before);
+    assert(requests == sent);
     cache_access_tick(&state, &lower);
     assert(state.active->status == REQUEST_READY);
     assert(state.access_sequence == sequence + 1 && completions == before);

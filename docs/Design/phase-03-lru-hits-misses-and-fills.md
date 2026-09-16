@@ -2,14 +2,40 @@
 
 ## Status
 
-- Design: Hit timing interpretation under review; no revised state machine confirmed
-- Implementation: Implemented for the confirmed normal path
-- Acceptance: Partial; reference hit timing differs
+- Design: Confirmed by instructor clarification
+- Implementation: Implemented with next-tick request start
+- Acceptance: Accepted locally
 
 The student requests committing/pushing the current implementation while asking
 Professor Railing about the timing interpretation. The English Ed draft is saved
 in `docs/ed-cache-hit-timing-question.md`; it has not been posted or sent by the
-agent. Current code retains next-cache-tick hit completion pending clarification.
+agent. That question has now been answered and the implementation revised as
+recorded below.
+
+### Instructor clarification received
+
+The instructor states:
+
+> The refCache queues the request and processes it on its next tick.
+> Conceptually, a cache is only doing one thing per cycle (and starting that
+> thing at the beginning of a cycle), so it is completing the first load in
+> tick 102 and then starts the next op in tick 103.
+
+This resolves the hit discrepancy's request-start boundary. `memoryRequest`
+must retain/enqueue the operation but must not perform its lookup or miss
+issuance synchronously. A request arriving after the cache's tick in cycle 102
+starts at the beginning of cache tick 103. If that access hits, its required
+later callback occurs on tick 104. The current implementation starts the
+request inside `memoryRequest`, so it remains one tick early on hits and needs
+revision. Miss timing must be regression-checked separately because existing
+miss totals matched the reference before this clarification.
+
+Implemented resolution: `memoryRequest` now only copies the original request
+onto the outer FIFO. An idle cache starts that request from a later cache tick.
+A request completed in tick T does not start the next original request until
+tick T+1. The focused miss-then-hit trace now matches `refCache` in verbose
+classification and at 104 ticks. Clean and dirty eviction traces remain exact
+at 506 ticks, and the broader `wide.trace` matches at 2136 ticks.
 
 Phase 04 integration note: the internal event handler now also receives the
 borrowed coherence pointer, allowing a completed eviction to issue a fetch.

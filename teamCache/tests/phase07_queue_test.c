@@ -85,31 +85,41 @@ static void test_fifo_and_split_transition(void)
     setup();
 
     issue(MEM_LOAD, 0x10, 1, 1, 11);
-    assert(fetches == 1 && fetch_address[0] == 0x10);
     issue(MEM_LOAD, 0x10, 1, 2, 22);
     issue(MEM_LOAD, 0x1f, 2, 3, 33);
 
-    assert(state.active != NULL && state.active->processor == 1);
+    assert(fetches == 0 && state.active == NULL);
     assert(state.request_queue_head != NULL);
-    assert(state.request_queue_head->processor == 2);
+    assert(state.request_queue_head->processor == 1);
     assert(state.request_queue_head->op.memAddress == 0x10);
+    assert(state.request_queue_head->next->processor == 2);
+    assert(state.request_queue_head->next->op.memAddress == 0x10);
     assert(state.request_queue_tail != NULL);
     assert(state.request_queue_tail->processor == 3);
     assert(state.request_queue_tail->op.memAddress == 0x1f);
 
-    cache_access_tick(&state, &lower);
+    cache_access_tick(&state, &lower); /* Start A one tick after arrival. */
+    assert(fetches == 1 && fetch_address[0] == 0x10);
+    assert(state.active != NULL && state.active->processor == 1);
     cache_access_tick(&state, &lower); /* A receives data and becomes READY. */
     assert(completions == 0 && state.active->processor == 1);
 
-    cache_access_tick(&state, &lower); /* Complete A; start hit B this tick. */
+    cache_access_tick(&state, &lower); /* Complete A; leave B queued. */
     assert(completions == 1 && completed_processor[0] == 1);
     assert(completed_tag[0] == 11 && completed_tick[0] == 2);
+    assert(state.active == NULL && state.request_queue_head->processor == 2);
+
+    cache_access_tick(&state, &lower); /* Start hit B on the following tick. */
     assert(state.active != NULL && state.active->processor == 2);
     assert(state.active->status == REQUEST_READY);
+    assert(completions == 1);
 
-    cache_access_tick(&state, &lower); /* Complete B; start C's low hit. */
+    cache_access_tick(&state, &lower); /* Complete B; leave C queued. */
     assert(completions == 2 && completed_processor[1] == 2);
-    assert(completed_tag[1] == 22 && completed_tick[1] == 3);
+    assert(completed_tag[1] == 22 && completed_tick[1] == 4);
+    assert(state.active == NULL && state.request_queue_head->processor == 3);
+
+    cache_access_tick(&state, &lower); /* Start C's low hit next tick. */
     assert(state.active != NULL && state.active->processor == 3);
     assert(state.active->op.memAddress == 0x1f);
     assert(state.active->status == REQUEST_READY);
@@ -123,7 +133,7 @@ static void test_fifo_and_split_transition(void)
     assert(state.active->status == REQUEST_READY && completions == 2);
     cache_access_tick(&state, &lower); /* Complete C once after both blocks. */
     assert(completions == 3 && completed_processor[2] == 3);
-    assert(completed_tag[2] == 33 && completed_tick[2] == 6);
+    assert(completed_tag[2] == 33 && completed_tick[2] == 8);
     assert(state.active == NULL && state.completion == NULL);
     assert(state.queue_head == NULL && state.request_queue_head == NULL);
 
@@ -137,6 +147,8 @@ static void test_destroy_releases_both_queues(void)
     issue(MEM_LOAD, 0x00, 1, 1, 41);
     issue(MEM_LOAD, 0x1f, 2, 2, 42);
     issue(MEM_STORE, 0x30, 1, 3, 43);
+    assert(state.active == NULL && state.request_queue_head != NULL);
+    cache_access_tick(&state, &lower);
     assert(state.active != NULL && state.request_queue_head != NULL);
 
     cache_access_destroy(&state);

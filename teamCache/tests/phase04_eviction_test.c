@@ -92,6 +92,9 @@ static void issue(enum op_type kind, uint64_t address, int64_t tag)
     cache_access_request(&state, &lower, op, 9, tag, complete);
     free(op);
     assert(completions == before);
+    assert(state.active == NULL && state.request_queue_head != NULL);
+    cache_access_tick(&state, &lower); /* Start on the next cache tick. */
+    assert(completions == before && state.active != NULL);
 }
 
 static void drain(int64_t tag)
@@ -147,7 +150,6 @@ static void test_selected_set_and_delayed_eviction(void)
     assert(state.active->status == REQUEST_WAITING_EVICTION);
     assert(evictions == 1 && fetches == 3);
     cache_access_event(&state, &lower, NO_ACTION, 9, 0x00);
-    cache_access_tick(&state, &lower);
     assert(victim->valid == snapshot.valid && victim->tag == snapshot.tag);
     assert(victim->dirty == snapshot.dirty && victim->time_stamp == snapshot.time_stamp);
     assert(fetches == 3 && completions == before && state.access_sequence == sequence);

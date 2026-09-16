@@ -60,6 +60,9 @@ static void issue(enum op_type kind, uint64_t address)
     trace_op op = {.op = kind, .memAddress = address, .size = 1};
     cache_access_request(&state, &lower, &op, 3, (int64_t)completions + 1,
                          complete);
+    assert(state.active == NULL && state.request_queue_head != NULL);
+    cache_access_tick(&state, &lower); /* Start on the next cache tick. */
+    assert(state.active != NULL);
 }
 
 static void receive_and_complete(uint64_t address)

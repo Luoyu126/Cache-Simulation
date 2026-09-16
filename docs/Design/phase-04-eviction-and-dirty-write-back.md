@@ -4,10 +4,12 @@
 
 - Design: Confirmed for the single-request LRU path
 - Implementation: Implemented
-- Acceptance: Partial; eviction checks pass, inherited hit-timing difference remains
+- Acceptance: Accepted locally
 
-The student authorized implementation, testing, and pushing Phase 04. Phase 03's hit-timing question remains pending professor
-clarification; it is not silently changed by this phase.
+The student authorized implementation, testing, and pushing Phase 04. The
+later instructor clarification resolved Phase 03 timing: requests start from
+a cache tick after arrival. Clean and dirty conflict traces still match at 506
+ticks, and mixed hit/eviction `wide.trace` now matches at 2136 ticks.
 
 ## Current Implementation Contract
 

@@ -44,9 +44,9 @@ Phase 01  Initialization and Lifecycle                 [Accepted locally]
     |
 Phase 02  Address Decoding and Lookup                  [Accepted locally]
     |
-Phase 03  LRU Hits, Misses, and Fills
+Phase 03  LRU Hits, Misses, and Fills                   [Accepted locally]
     |
-Phase 04  Eviction and Dirty Write-Back
+Phase 04  Eviction and Dirty Write-Back                 [Accepted locally]
     |
 Phase 05  Variable-Size and Split-Line Accesses
     |
@@ -208,11 +208,10 @@ Dedicated design file: `phase-03-lru-hits-misses-and-fills.md`
 
 ### Current status
 
-Implemented for the confirmed normal path. Strict compilation, metadata/timing
-harness, component Valgrind, and Phase 01/02 regression checks pass. Five focused
-traces match reference hit/miss classification, but traces with hits take one
-fewer tick per hit than the reference. Reference acceptance remains pending;
-see the Phase 03 record before changing the student-confirmed timing.
+Implemented with the instructor-confirmed queue-first timing. `memoryRequest`
+only enqueues; processing begins on a later cache tick. The focused miss/hit
+trace now matches `refCache` classifications and 104 ticks, while regressions
+and memory-safety checks pass. Details are in the Phase 03 record.
 
 ## Phase 04: Eviction and Dirty Write-Back
 
@@ -243,10 +242,9 @@ Dedicated design file: `phase-04-eviction-and-dirty-write-back.md`
 
 Implemented and locally checked: set-local LRU, delayed/immediate eviction,
 victim preservation, refill ordering, and pending-request cleanup pass. Clean
-and dirty conflict traces match reference at 506 ticks; mixed hit/eviction
-classification matches with only the inherited Phase 03 hit-timing difference.
-Full reference acceptance remains pending that clarification. Details and
-reproduction commands are in the Phase 04 design record.
+and dirty conflict traces match reference at 506 ticks. After the request-start
+timing correction, mixed hit/eviction `wide.trace` also matches verbose output
+and 2136 ticks. Details are in the Phase 04 design record.
 
 ## Phase 05: Variable-Size and Split-Line Accesses
 
@@ -303,8 +301,8 @@ Implemented and locally checked: centralized LRU/RRIP updates and victim
 selection, invalid-line preference, aging, deterministic first-maximum choice,
 and `k = 1`/`k = 64` boundaries pass. Phase 01--05 regressions and Valgrind
 also pass. A focused engine run matches `refCache` classifications; its
-six-tick difference across six hits is the inherited Phase 03 one-tick-per-hit
-discrepancy. Details are in the Phase 06 record.
+three misses, six hits, and 316 ticks now match exactly after the Phase 03
+request-start timing correction. Details are in the Phase 06 record.
 
 ## Phase 07: Request Queueing
 
@@ -332,11 +330,11 @@ Dedicated design file: `phase-07-request-queueing.md`
 
 ### Current status
 
-Implemented and locally accepted: an outer arrival-order FIFO retains complete
-original requests while the existing Phase 05 inner FIFO serializes only the
-current request's blocks. Same-tick successor start, later completion,
-identity preservation, split ordering, destruction, Phase 01--06 regressions,
-and Valgrind all pass. Details are in the Phase 07 design record.
+Implemented and locally accepted. Every arrival is copied into the outer FIFO
+without synchronous processing; an idle cache starts it on a later tick, and a
+request following one completed in tick T starts in tick T+1. FIFO identity,
+split ordering, destruction, Phase 01--06 regressions, reference timing checks,
+and Valgrind pass. Details are in the Phase 07 record.
 
 ## Phase 08: Single-Entry Write Buffer
 

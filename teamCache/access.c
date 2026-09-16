@@ -107,6 +107,7 @@ void cache_access_request(cache_state* state, coher* coherence,
                           const trace_op* op, int processor, int64_t tag,
                           void (*callback)(int, int64_t))
 {
+    (void)coherence; /* Processing begins from a later cache tick. */
     if (op == NULL || callback == NULL || processor < 0
         || (op->op != MEM_LOAD && op->op != MEM_STORE) || op->size <= 0)
         fail("invalid memory request");
@@ -115,7 +116,6 @@ void cache_access_request(cache_state* state, coher* coherence,
     const char* error = cache_request_enqueue(state, op, processor, tag, callback);
     if (error != NULL)
         fail(error);
-    start_next_request(state, coherence);
 }
 
 void cache_access_event(cache_state* state, coher* coherence, int type, int processor,
@@ -161,16 +161,15 @@ void cache_access_tick(cache_state* state, coher* coherence)
         /* Detach before calling external code; this completion occurs once. */
         state->active = NULL;
         if (cache_split_complete(state, request))
-        {
             request->callback(request->processor, request->request_tag);
-            start_next_request(state, coherence);
-        }
         else
             start_next_block(state, coherence);
         /* A new active hit is not retired again in this tick. */
         free(request);
     }
-    /* A callback nested here can mark READY, but cannot complete this tick. */
+    else
+        start_next_request(state, coherence);
+    /* A callback can enqueue another request, which remains for a later tick. */
     coherence->si.tick();
 }
 

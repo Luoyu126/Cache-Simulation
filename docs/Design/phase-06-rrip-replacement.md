@@ -4,7 +4,7 @@
 
 - Design: Confirmed
 - Implementation: Implemented
-- Acceptance: Partial; classifications match reference, inherited hit timing differs
+- Acceptance: Partial; focused reference timing matches, RRIP conflicts remain
 
 The student asks what Phase 06 adds after Phase 05. This record captures the
 scope and the design questions to resolve before implementation.
@@ -221,12 +221,11 @@ git diff --check
 - Valgrind reports 30 allocations, 30 frees, zero bytes at exit, and zero
   errors.
 - The real engine runs `traces/cache/load.trace` with `ex_rrip.config` and
-  `teamCache`, completing in 310 ticks.
+  `teamCache`, completing in 316 ticks after the queue-first timing correction.
 - IDE diagnostics and `git diff --check` report no errors.
 - The prebuilt `refCache/librefCache.so` was run by passing its absolute
   component directory to the engine. On `traces/cache/load.trace` with
   `ex_rrip.config`, both implementations report the same sequence of three
-  misses and six hits. `teamCache` takes 310 ticks and `refCache` takes 316.
-  The six-tick total difference is exactly the inherited Phase 03 difference
-  of one tick per hit, not a new RRIP classification difference. Acceptance
-  remains Partial pending resolution of that timing contract.
+  misses and six hits, and both take 316 ticks. This resolves the inherited
+  Phase 03 hit-timing discrepancy for this RRIP trace. Acceptance remains
+  Partial until a reference-comparable RRIP replacement-conflict trace is run.
