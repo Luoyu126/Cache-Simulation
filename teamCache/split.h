@@ -18,6 +18,9 @@ const char* cache_split_prepare(cache_state* state, const trace_op* op,
 cache_request* cache_split_take(cache_state* state);
 /* Count one retired block; release the count entry if the original is done. */
 bool cache_split_complete(cache_state* state, const cache_request* request);
+/* Complete one buffered single-block store before its background data arrives. */
+void cache_split_complete_buffered(cache_state* state,
+                                   const cache_request* request);
 /* Free queued parts and the count entry; active is owned by access.c. */
 void cache_split_destroy(cache_state* state);
 

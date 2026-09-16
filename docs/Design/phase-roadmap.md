@@ -54,7 +54,7 @@ Phase 06  RRIP Replacement                              [Implemented]
     |
 Phase 07  Request Queueing                              [Accepted locally]
     |
-Phase 08  Single-Entry Write Buffer
+Phase 08  Single-Entry Write Buffer                    [Accepted locally]
     |
 Phase 09  Reference Validation and Experiments
 ```
@@ -363,6 +363,16 @@ Dedicated design file: `phase-08-single-entry-write-buffer.md`
   or state.
 - `wb-test.trace` and additional focused traces match `refCache` in total ticks
   and verbose behavior.
+
+### Current status
+
+Implemented and locally accepted under the student-confirmed interpretation of
+independent execution. While buffered data is outstanding, one foreground hit
+may perform lookup/metadata work but retains its callback; a foreground miss
+waits without lower work. Buffered completion releases the hit or starts the
+waiting miss. `wb-test.trace` matches `refCache` at 205 ticks; contained
+misaligned, cross-line, and final-store traces also match. Phase 01--08
+harnesses and Valgrind pass. Details are in the Phase 08 record.
 
 ## Phase 09: Reference Validation and Experiments
 

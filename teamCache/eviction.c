@@ -5,18 +5,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void cache_eviction_complete(cache_state* state)
+void cache_eviction_complete(cache_request* request)
 {
-    cache_request* request = state->active;
     assert(request != NULL && request->status == REQUEST_WAITING_EVICTION);
     assert(request->target != NULL && request->target->valid);
     /* Keep the line's old identity intact until the lower transfer finishes. */
     request->target->valid = false;
 }
 
-bool cache_eviction_prepare(cache_state* state, coher* coherence)
+bool cache_eviction_prepare(cache_state* state, coher* coherence,
+                            cache_request* request)
 {
-    cache_request* request = state->active;
     assert(request != NULL);
     uint64_t block_number = request->op.memAddress >> state->b;
     size_t set_index = (size_t)(block_number & ((uint64_t)state->S - 1));
@@ -37,6 +36,6 @@ bool cache_eviction_prepare(cache_state* state, coher* coherence)
         return true;
 
     /* Zero means already complete, so no later notification is required. */
-    cache_eviction_complete(state);
+    cache_eviction_complete(request);
     return false;
 }

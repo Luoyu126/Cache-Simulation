@@ -451,3 +451,13 @@ both halves independently produce required miss/eviction effects. No change
 was made to suppress teamCache's second-block eviction merely to match this
 binary observation. Phase 05 remains Partial pending specification/reference
 clarification.
+
+## Phase 08 Regression Discovery
+
+An ineligible cross-line store trace exposed an implementation bug in verbose
+reporting: `trace_access` hard-coded every later split block as `also a Hit`
+instead of using that block's actual outcome. It now prints the computed
+hit/miss/eviction classification. For `S 0xf,2; L 0x0,1` with 16-byte blocks,
+`teamCache` and `refCache` now both report the lower miss, later-block miss,
+final hit, and 204 ticks. This output correction does not alter the confirmed
+serial split scheduling or the separately documented split-eviction anomaly.

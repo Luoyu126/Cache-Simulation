@@ -77,10 +77,10 @@ cache_request* cache_split_take(cache_state* state)
     return request;
 }
 
-bool cache_split_complete(cache_state* state, const cache_request* request)
+static bool complete_one(cache_state* state, const cache_request* request)
 {
     cache_completion* count = state->completion;
-    assert(count != NULL && request->status == REQUEST_READY);
+    assert(count != NULL);
     assert(count->processor == request->processor
            && count->request_tag == request->request_tag);
     assert(count->completed < count->total
@@ -92,4 +92,18 @@ bool cache_split_complete(cache_state* state, const cache_request* request)
     free(count);
     state->completion = NULL;
     return true;
+}
+
+bool cache_split_complete(cache_state* state, const cache_request* request)
+{
+    assert(request->status == REQUEST_READY);
+    return complete_one(state, request);
+}
+
+void cache_split_complete_buffered(cache_state* state,
+                                   const cache_request* request)
+{
+    assert(state->completion != NULL && state->completion->total == 1);
+    assert(state->queue_head == NULL && state->queue_tail == NULL);
+    assert(complete_one(state, request));
 }
