@@ -28,6 +28,9 @@ typedef struct cache_state {
     size_t B;
 
     struct cache_request* active; /* Owned; NULL when no request is pending. */
+    struct cache_request* queue_head; /* Owned pending blocks, low address first. */
+    struct cache_request* queue_tail;
+    struct cache_completion* completion; /* One original request's count entry. */
     uint64_t access_sequence;
 
     /* Configuration only until the corresponding phases are implemented. */

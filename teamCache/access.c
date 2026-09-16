@@ -1,6 +1,7 @@
 #include "access.h"
 #include "lookup.h"
 #include "eviction.h"
+#include "split.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -43,6 +44,13 @@ static void trace_access(const cache_state* state, const char* outcome)
         return;
     const cache_request* request = state->active;
     uint64_t address = block_address(state, request->op.memAddress);
+    if (request->block_index != 0)
+    {
+        /* Reference labels the later half of one split processor access specially. */
+        printf("  [%d] Address: 0x%" PRIx64 " is also a Hit\n",
+               request->processor, address);
+        return;
+    }
     /* Match the reference's null-address spelling without pointer casts. */
     if (address == 0)
         printf("[%d] Address: (nil) is a %s\n", request->processor, outcome);
@@ -51,28 +59,13 @@ static void trace_access(const cache_state* state, const char* outcome)
                request->processor, address, outcome);
 }
 
-void cache_access_request(cache_state* state, coher* coherence,
-                          const trace_op* op, int processor, int64_t tag,
-                          void (*callback)(int, int64_t))
+/* Only the selected head performs lookup, replacement or lower requests. */
+static void start_next_block(cache_state* state, coher* coherence)
 {
-    if (op == NULL || callback == NULL || processor < 0
-        || (op->op != MEM_LOAD && op->op != MEM_STORE) || op->size <= 0)
-        fail("invalid memory request");
-    if (state->active != NULL)
-        fail("overlapping requests require Phase 07 queueing");
-    if (state->policy != CACHE_POLICY_LRU || state->write_buffer_mode != 0)
-        fail("RRIP and write-buffer accesses belong to later phases");
-    uint64_t offset = op->memAddress & ((uint64_t)state->B - 1);
-    if ((uint64_t)op->size > (uint64_t)state->B - offset)
-        fail("split-line requests require Phase 05");
-
-    cache_request* request = calloc(1, sizeof(*request));
-    if (request == NULL)
-        fail("request allocation failed");
-    *request = (cache_request){.op = *op, .processor = processor,
-        .request_tag = tag, .callback = callback,
-        .status = REQUEST_WAITING_DATA};
+    cache_request* request = cache_split_take(state);
     state->active = request;
+    request->status = REQUEST_WAITING_DATA;
+    const trace_op* op = &request->op;
 
     cache_line* line = cache_lookup(state, op->memAddress);
     if (line != NULL)
@@ -88,6 +81,24 @@ void cache_access_request(cache_state* state, coher* coherence,
                  ? (request->target->dirty ? "Dirty Evict" : "Evict") : "Miss");
     if (!waiting)
         fetch(state, coherence);
+}
+
+void cache_access_request(cache_state* state, coher* coherence,
+                          const trace_op* op, int processor, int64_t tag,
+                          void (*callback)(int, int64_t))
+{
+    if (op == NULL || callback == NULL || processor < 0
+        || (op->op != MEM_LOAD && op->op != MEM_STORE) || op->size <= 0)
+        fail("invalid memory request");
+    if (state->active != NULL || state->completion != NULL
+        || state->queue_head != NULL)
+        fail("overlapping requests require Phase 07 queueing");
+    if (state->policy != CACHE_POLICY_LRU || state->write_buffer_mode != 0)
+        fail("RRIP and write-buffer accesses belong to later phases");
+    const char* error = cache_split_prepare(state, op, processor, tag, callback);
+    if (error != NULL)
+        fail(error);
+    start_next_block(state, coherence);
 }
 
 void cache_access_event(cache_state* state, coher* coherence, int type, int processor,
@@ -131,7 +142,11 @@ void cache_access_tick(cache_state* state, coher* coherence)
     {
         /* Detach before calling external code; this completion occurs once. */
         state->active = NULL;
-        request->callback(request->processor, request->request_tag);
+        if (cache_split_complete(state, request))
+            request->callback(request->processor, request->request_tag);
+        else
+            start_next_block(state, coherence);
+        /* A new active hit is not retired again in this tick. */
         free(request);
     }
     /* A callback nested here can mark READY, but cannot complete this tick. */
@@ -142,4 +157,5 @@ void cache_access_destroy(cache_state* state)
 {
     free(state->active);
     state->active = NULL;
+    cache_split_destroy(state);
 }

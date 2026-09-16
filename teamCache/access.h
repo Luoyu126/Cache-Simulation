@@ -5,6 +5,7 @@
 #include "cache_internal.h"
 
 typedef enum request_status {
+    REQUEST_QUEUED,
     REQUEST_WAITING_EVICTION,
     REQUEST_WAITING_DATA,
     REQUEST_READY
@@ -18,6 +19,8 @@ typedef struct cache_request {
     request_status status;
     cache_line* target; /* Borrowed from sets; never freed with the request. */
     uint64_t victim_address;
+    uint64_t block_index; /* Ordinal within the original processor request. */
+    struct cache_request* next; /* Owned FIFO linkage; NULL while active. */
 } cache_request;
 
 void cache_access_request(cache_state* state, coher* coherence,
