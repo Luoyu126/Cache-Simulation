@@ -107,7 +107,7 @@ static void check_storage(char** argv, size_t expected_sets, size_t expected_way
             cache_line* line = state.sets[s][w];
             assert(line != NULL);
             assert(!line->valid && !line->dirty);
-            assert(line->tag == 0 && line->last_access == 0);
+            assert(line->tag == 0 && line->time_stamp == 0);
         }
     }
     /* Mutating one object must not change another line or another set. */

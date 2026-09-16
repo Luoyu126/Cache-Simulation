@@ -1,6 +1,7 @@
 #include "access.h"
 #include "lookup.h"
 #include "eviction.h"
+#include "replacement.h"
 #include "split.h"
 
 #include <inttypes.h>
@@ -18,11 +19,8 @@ static uint64_t block_address(const cache_state* state, uint64_t address)
     return address & ~((uint64_t)state->B - 1);
 }
 
-static void touch(cache_state* state, cache_line* line, enum op_type op)
+static void mark_dirty(cache_line* line, enum op_type op)
 {
-    if (state->access_sequence == UINT64_MAX)
-        fail("access sequence exhausted");
-    line->last_access = ++state->access_sequence;
     if (op == MEM_STORE)
         line->dirty = true;
 }
@@ -71,7 +69,8 @@ static void start_next_block(cache_state* state, coher* coherence)
     if (line != NULL)
     {
         trace_access(state, "Hit");
-        touch(state, line, request->op.op);
+        cache_replacement_hit(state, line);
+        mark_dirty(line, request->op.op);
         request->status = REQUEST_READY;
         return;
     }
@@ -93,8 +92,8 @@ void cache_access_request(cache_state* state, coher* coherence,
     if (state->active != NULL || state->completion != NULL
         || state->queue_head != NULL)
         fail("overlapping requests require Phase 07 queueing");
-    if (state->policy != CACHE_POLICY_LRU || state->write_buffer_mode != 0)
-        fail("RRIP and write-buffer accesses belong to later phases");
+    if (state->write_buffer_mode != 0)
+        fail("write-buffer accesses belong to Phase 08");
     const char* error = cache_split_prepare(state, op, processor, tag, callback);
     if (error != NULL)
         fail(error);
@@ -130,7 +129,8 @@ void cache_access_event(cache_state* state, coher* coherence, int type, int proc
         fail("fill target is not available");
     line->tag = (address >> state->b) >> state->s;
     line->dirty = false;
-    touch(state, line, request->op.op);
+    cache_replacement_fill(state, line);
+    mark_dirty(line, request->op.op);
     line->valid = true;
     request->status = REQUEST_READY;
 }

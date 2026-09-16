@@ -40,7 +40,7 @@ static void check_lookup(cache_state* state, uint64_t addr, cache_line* expected
             assert(line == lines[s][w]);
             assert(line->valid == before[s][w].valid);
             assert(line->tag == before[s][w].tag);
-            assert(line->last_access == before[s][w].last_access);
+            assert(line->time_stamp == before[s][w].time_stamp);
             assert(line->dirty == before[s][w].dirty);
         }
     }
@@ -57,12 +57,12 @@ static void check_four_sets(void)
     /* Initially invalid tag-zero lines must not count as hits. */
     check_lookup(&state, 0, NULL);
     /* A valid tag in the wrong set must not count either. */
-    *state.sets[0][0] = (cache_line){.valid = true, .tag = 0, .last_access = 9};
+    *state.sets[0][0] = (cache_line){.valid = true, .tag = 0, .time_stamp = 9};
     check_lookup(&state, 0x10, NULL);
 
     /* Invalid way 0 must not prevent a hit in way 1. */
     *state.sets[1][1] = (cache_line){
-        .valid = true, .tag = 0, .last_access = 37, .dirty = true
+        .valid = true, .tag = 0, .time_stamp = 37, .dirty = true
     };
     check_lookup(&state, 0x10, state.sets[1][1]);
     check_lookup(&state, 0x18, state.sets[1][1]);
@@ -70,7 +70,7 @@ static void check_four_sets(void)
     check_lookup(&state, 0x20, NULL);
     check_lookup(&state, 0x50, NULL); /* Same set, different tag; one empty way. */
 
-    *state.sets[1][0] = (cache_line){.valid = true, .tag = 1, .last_access = 42};
+    *state.sets[1][0] = (cache_line){.valid = true, .tag = 1, .time_stamp = 42};
     check_lookup(&state, 0x50, state.sets[1][0]);
     check_lookup(&state, 0x18, state.sets[1][1]); /* Hit in a full set. */
     check_lookup(&state, 0x90, NULL); /* Miss in a full set. */
@@ -97,7 +97,7 @@ static void check_single_set(void)
     cache_sim_args args = {7, argv, NULL};
     assert(cache_storage_init(&state, &args));
     check_lookup(&state, UINT64_MAX, NULL);
-    *state.sets[0][0] = (cache_line){.valid = true, .tag = 1, .last_access = 99};
+    *state.sets[0][0] = (cache_line){.valid = true, .tag = 1, .time_stamp = 99};
     check_lookup(&state, 0x400, state.sets[0][0]);
     check_lookup(&state, 0x7ff, state.sets[0][0]);
     check_lookup(&state, 0x800, NULL);

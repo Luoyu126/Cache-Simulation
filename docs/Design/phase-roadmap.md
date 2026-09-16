@@ -50,7 +50,7 @@ Phase 04  Eviction and Dirty Write-Back
     |
 Phase 05  Variable-Size and Split-Line Accesses
     |
-Phase 06  RRIP Replacement
+Phase 06  RRIP Replacement                              [Implemented]
     |
 Phase 07  Request Queueing
     |
@@ -296,6 +296,15 @@ Dedicated design file: `phase-06-rrip-replacement.md`
   first eligible line.
 - RRIP conflict traces match `refCache` in classifications and total ticks for
   valid comparable configurations.
+
+### Current status
+
+Implemented and locally checked: centralized LRU/RRIP updates and victim
+selection, invalid-line preference, aging, deterministic first-maximum choice,
+and `k = 1`/`k = 64` boundaries pass. Phase 01--05 regressions and Valgrind
+also pass. A focused engine run matches `refCache` classifications; its
+six-tick difference across six hits is the inherited Phase 03 one-tick-per-hit
+discrepancy. Details are in the Phase 06 record.
 
 ## Phase 07: Request Queueing
 

@@ -135,7 +135,7 @@ static void test_selected_set_and_delayed_eviction(void)
     cache_line* other = cache_lookup(&state, 0x00);
     cache_line* recent = cache_lookup(&state, 0x10);
     cache_line* victim = cache_lookup(&state, 0x50);
-    assert(other->last_access < victim->last_access);
+    assert(other->time_stamp < victim->time_stamp);
     assert(!state.sets[2][0]->valid); /* Other-set space must not be used. */
     cache_line snapshot = *victim;
     unsigned int before = completions;
@@ -149,7 +149,7 @@ static void test_selected_set_and_delayed_eviction(void)
     cache_access_event(&state, &lower, NO_ACTION, 9, 0x00);
     cache_access_tick(&state, &lower);
     assert(victim->valid == snapshot.valid && victim->tag == snapshot.tag);
-    assert(victim->dirty == snapshot.dirty && victim->last_access == snapshot.last_access);
+    assert(victim->dirty == snapshot.dirty && victim->time_stamp == snapshot.time_stamp);
     assert(fetches == 3 && completions == before && state.access_sequence == sequence);
 
     cache_access_tick(&state, &lower); /* Eviction completes; fetch starts here. */
@@ -162,7 +162,7 @@ static void test_selected_set_and_delayed_eviction(void)
     cache_access_tick(&state, &lower); /* New data arrives, not completion yet. */
     assert(state.active->status == REQUEST_READY && completions == before);
     assert(cache_lookup(&state, 0x90) == victim && !victim->dirty);
-    assert(victim->last_access == sequence + 1);
+    assert(victim->time_stamp == sequence + 1);
     drain(5);
     assert(cache_lookup(&state, 0x00) == other && cache_lookup(&state, 0x10) == recent);
     assert(!state.sets[2][0]->valid);

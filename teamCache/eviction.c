@@ -1,4 +1,5 @@
 #include "eviction.h"
+#include "replacement.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -19,22 +20,11 @@ bool cache_eviction_prepare(cache_state* state, coher* coherence)
     assert(request != NULL);
     uint64_t block_number = request->op.memAddress >> state->b;
     size_t set_index = (size_t)(block_number & ((uint64_t)state->S - 1));
-    cache_line* victim = state->sets[set_index][0];
-
-    /* Placement and LRU are local to this set, even if another set is empty. */
-    for (size_t way = 0; way < state->E; ++way)
-    {
-        cache_line* line = state->sets[set_index][way];
-        if (!line->valid)
-        {
-            request->target = line;
-            return false;
-        }
-        if (line->last_access < victim->last_access)
-            victim = line;
-    }
-
+    cache_line* victim = cache_replacement_target(state, set_index);
     request->target = victim;
+    if (!victim->valid)
+        return false;
+
     request->victim_address = ((victim->tag << state->s) | (uint64_t)set_index)
                               << state->b;
     request->status = REQUEST_WAITING_EVICTION;

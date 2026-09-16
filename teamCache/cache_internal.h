@@ -9,7 +9,8 @@
 typedef struct cache_line {
     bool valid;
     uint64_t tag;
-    uint64_t last_access;
+    /* LRU timestamp or RRIP prediction value, selected by cache policy. */
+    uint64_t time_stamp;
     bool dirty; /* Modified in cache and not yet written back. */
 } cache_line;
 
@@ -33,9 +34,9 @@ typedef struct cache_state {
     struct cache_completion* completion; /* One original request's count entry. */
     uint64_t access_sequence;
 
-    /* Configuration only until the corresponding phases are implemented. */
     cache_policy policy;
     unsigned int rrip_bits;
+    /* Configuration only until Phase 08 is implemented. */
     unsigned int write_buffer_mode;
 } cache_state;
 

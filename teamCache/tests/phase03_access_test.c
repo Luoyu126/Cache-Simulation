@@ -131,30 +131,30 @@ int main(void)
     assert(state.active->status == REQUEST_WAITING_DATA);
     finish_miss(101);
     cache_line* a = cache_lookup(&state, 0x10);
-    assert(a != NULL && !a->dirty && a->last_access == 1);
+    assert(a != NULL && !a->dirty && a->time_stamp == 1);
 
     issue(MEM_STORE, 0x10, 102);
-    assert(a->dirty && a->last_access == 2 && requests == 1);
+    assert(a->dirty && a->time_stamp == 2 && requests == 1);
     finish_hit(102);
     issue(MEM_LOAD, 0x1f, 103);
-    assert(a->dirty && a->last_access == 3 && requests == 1);
+    assert(a->dirty && a->time_stamp == 3 && requests == 1);
     finish_hit(103);
 
     issue(MEM_STORE, 0x28, 104);
     assert(requested_address == 0x20);
     finish_miss(104);
     cache_line* b = cache_lookup(&state, 0x20);
-    assert(b != NULL && b->dirty && b->last_access == 4);
-    assert(a->last_access == 3);
+    assert(b != NULL && b->dirty && b->time_stamp == 4);
+    assert(a->time_stamp == 3);
     issue(MEM_LOAD, 0x10, 105);
-    assert(a->last_access == 5 && b->last_access == 4);
+    assert(a->time_stamp == 5 && b->time_stamp == 4);
     finish_hit(105);
 
     issue(MEM_LOAD, UINT64_C(0x8000000000000018), INT64_MAX);
     assert(requested_address == UINT64_C(0x8000000000000010));
     finish_miss(INT64_MAX);
     cache_line* high = cache_lookup(&state, UINT64_C(0x8000000000000018));
-    assert(high != NULL && high != a && !high->dirty && high->last_access == 6);
+    assert(high != NULL && high != a && !high->dirty && high->time_stamp == 6);
     cache_access_destroy(&state);
     cache_storage_destroy(&state);
 
