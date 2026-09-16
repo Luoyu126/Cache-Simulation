@@ -13,6 +13,32 @@ responsible for Phase 09 validation, parameter exploration, and the experiment
 report. Earlier design history, student decisions, tests, known discrepancies,
 and observed reference behavior are under `docs/Design/`.
 
+## Branch Layout: Read Before Starting
+
+The branches intentionally contain different handoff material:
+
+- `master` will receive only the completed `teamCache/` implementation needed
+  for the final cache submission.
+- The full `docs/Design/` history, this Phase 09 handoff, validation notes, and
+  experiment guidance are maintained on `develop`.
+- Commit hashes listed in this document refer to `develop`.
+
+The Phase 09 owner must switch to and update `develop` before reading the
+design records:
+
+```sh
+git status
+# Save or commit local work before switching if the tree is not clean.
+git switch develop
+git pull origin develop
+```
+
+Do not conclude that a design record is missing merely because it is not
+present on `master`. For implementation-only submission work, use the
+`teamCache/` content synchronized to `master`. For Phase 09 investigation and
+report preparation, use `develop`, which already contains both the same
+implementation history and its documentation.
+
 Do not infer current behavior only from old discussion sections. In each phase
 record, read the status, latest confirmed contract, implementation mapping, and
 latest observed results. Historical proposals are retained and marked
@@ -386,17 +412,19 @@ Every numeric claim should be traceable to a raw file and derivation script.
 
 ## Suggested First Actions for the Phase 09 Owner
 
-1. Read this file, `phase-roadmap.md`, and Phase 05/06/08 records in full.
-2. Rebuild from a clean build directory.
-3. Run all eight focused harnesses.
-4. Re-run the known reference comparisons listed above.
-5. Resolve the two modeled-storage questions.
-6. Confirm the AAT and cross-trace aggregation method.
-7. Implement the candidate generator and storage filter.
-8. Run a small sample matrix and inspect raw artifacts before launching the
+1. Switch to and pull `develop`; the design records are not being copied to
+   `master`.
+2. Read this file, `phase-roadmap.md`, and Phase 05/06/08 records in full.
+3. Rebuild from a clean build directory.
+4. Run all eight focused harnesses.
+5. Re-run the known reference comparisons listed above.
+6. Resolve the two modeled-storage questions.
+7. Confirm the AAT and cross-trace aggregation method.
+8. Implement the candidate generator and storage filter.
+9. Run a small sample matrix and inspect raw artifacts before launching the
    full search.
-9. Re-run the Phase 05 split-eviction MRE.
-10. Mark this phase `Implemented` only when scripts/results exist and
+10. Re-run the Phase 05 split-eviction MRE.
+11. Mark this phase `Implemented` only when scripts/results exist and
     `Accepted` only when all roadmap acceptance behaviors pass.
 
 ## Commands and Observed Results
