@@ -3,7 +3,7 @@ import subprocess, itertools, math, csv, os, re, sys
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 BUILD = os.path.join(REPO, "build")
-ENGINE = os.path.join(BUILD, "cadss-engine")
+ENGINE = os.path.join(REPO, "cadss-engine")
 CONFIG_DIR = os.path.join(REPO, "experiments/configs")
 TRACE_DIR = "/afs/cs.cmu.edu/academic/class/15346-f23/public/traces/cache"
 TRACES = ["astar.trace", "bzip2.trace", "long.trace", "mcf.trace", "perlbench.trace"]
