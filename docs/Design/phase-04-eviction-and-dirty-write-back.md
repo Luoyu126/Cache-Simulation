@@ -282,6 +282,9 @@ trace keeps an older block at 0x0 in another set and leaves still other sets
 empty while forcing replacement among 0x10/0x50/0x90. Later hits confirm the
 other-set block survived and the correct target-set victim was chosen.
 
+After on-demand storage (2026-09-17), an unused set remains a NULL pointer
+rather than an allocated invalid line.
+
 Run from `/tmp/cadss-phase01-build`:
 
 ```sh

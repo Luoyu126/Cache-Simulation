@@ -438,7 +438,9 @@ on matching buffered DATA_RECV:
     if foreground is READY:
         leave its callback for the following cache tick
     else if foreground is REQUEST_WAITING_BUFFER:
-        start its ordinary miss path now
+        look up that waiting request again
+        a hit updates metadata and becomes READY without a same-tick callback
+        a miss starts its ordinary miss path now
     else:
         immediately start the current outer-FIFO head, if present
 
@@ -466,7 +468,8 @@ address.
 - `teamCache/CMakeLists.txt`: compile `write_buffer.c`.
 - `tests/teamCache/phase08_write_buffer_test.c`: early callback, retained
   background ownership, early hit lookup with delayed callback,
-  `REQUEST_WAITING_BUFFER` miss resume, delayed dirty eviction,
+  `REQUEST_WAITING_BUFFER` miss resume, same-line wait becoming a hit after
+  the buffered fill, immediate `permReq` grant fill, delayed dirty eviction,
   contained-address eligibility, split exclusion, `-w 0`, and cleanup.
 - `teamCache/access.c:trace_access`: later split blocks now print their actual
   hit/miss/eviction outcome instead of a hard-coded `Hit`.
@@ -479,6 +482,10 @@ address.
 - Independent read and write hits progress while the buffer is occupied.
 - A subsequent miss waits and later resumes without loss, duplication, or
   lower-request overlap.
+- A subsequent request for the same in-flight buffered line becomes a hit
+  after the fill, without a second permission request.
+- If `permReq` grants permission immediately, the miss fills in place and
+  remains READY for the following tick's processor callback.
 - A cross-line store miss follows the ordinary blocking path.
 - Foreground and buffered callbacks/events cannot overwrite one another.
 - Destroying with an occupied buffer releases all cache-owned storage.
@@ -511,6 +518,10 @@ git diff --check
 - Valgrind reports 79 allocations, 79 frees, zero bytes at exit, and zero
   errors.
 - `wb-test.trace` matches `refCache` verbose output and 205 ticks exactly.
+- `traces/cache/trans.trace` with `ex_wb.config` now matches `refCache` at
+  1651 ticks and identical verbose classifications. The previous path treated
+  a same-line `REQUEST_WAITING_BUFFER` resume as a miss and aborted when
+  `permReq` returned true.
 - A contained non-naturally-aligned trace `S 0x101,4; L 0x100,4` matches
   reference classifications and 102 ticks, establishing single-line
   eligibility.
@@ -520,3 +531,9 @@ git diff --check
 - A final-store-only mode-1 trace matches `refCache` at 3 ticks.
 - `-w 0` focused hit timing remains 104 ticks and RRIP timing remains 316.
 - `git diff --check` passes.
+
+## Split Cursor (2026-09-17)
+
+A 32-byte store with 16-byte blocks still has `completion->total == 2` and is
+not write-buffered. The second block is no longer a pre-queued `cache_request`
+on `queue_head`. Buffered tests seed the dirty victim with `cache_ensure_line`.

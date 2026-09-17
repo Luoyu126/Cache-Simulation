@@ -185,3 +185,10 @@ Post-revision reference checks:
   ticks.
 - Clean and dirty Phase 04 conflict traces: both report 506 ticks.
 - `traces/cache/wide.trace`: verbose output matches and both report 2136 ticks.
+
+## Split Successor Representation (2026-09-17)
+
+The inner split of one original request no longer parks the second block on
+`queue_head`. Phase 07 still owns the arrival-order FIFO of original requests.
+After request C starts its low hit, `completion->total == 2` and
+`completion->last_block == 0x20`; `queue_head` stays NULL.

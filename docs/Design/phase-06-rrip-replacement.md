@@ -157,13 +157,17 @@ choose placement target(set):
         preserve the existing first-way tie behavior
     else:
         maximum = 2^k - 1
-        repeat:
-            scan ways in order and return the first line equal to maximum
-            increment every line's replacement metadata by one
+        highest = the largest replacement metadata in the set
+        add (maximum - highest) to every line
+        return the first line equal to maximum
 ```
 
-The RRIP increment cannot wrap under the confirmed loop invariant: aging runs
-only after a complete scan proves that every value is below the maximum.
+One aging add of `(maximum - highest)` is equivalent to incrementing every
+RRPV until some line reaches `2^k - 1`. The previous `repeat { scan; +1 }`
+loop is therefore `Superseded`: it is semantically identical but `O(E * 2^k)`
+and hangs for large `k` after hits reset every RRPV to 0. The add cannot wrap
+even when `k` is 64, because every value is at most `maximum` before aging.
+
 The implemented field name is the student-selected `time_stamp`.
 `replacement.c` handles `k = 64` with `UINT64_MAX` instead of shifting by 64.
 
@@ -215,7 +219,8 @@ git diff --check
 - The component and simulator framework targets build successfully.
 - The Phase 06 harness passes hit reset, recommended fill value, invalid-line
   preference, aging, first-maximum selection, integrated eviction/refill,
-  dirty replacement, unchanged LRU selection, and `k = 1`/`k = 64` boundaries.
+  dirty replacement, unchanged LRU selection, `k = 1`/`k = 64` boundaries,
+  and `O(E)` aging from RRPV 0 at `k = 64`.
 - Phase 01, 02, 03, 04, and 05 regression harnesses all pass after linking
   `replacement.c`.
 - Valgrind reports 30 allocations, 30 frees, zero bytes at exit, and zero
@@ -229,3 +234,14 @@ git diff --check
   misses and six hits, and both take 316 ticks. This resolves the inherited
   Phase 03 hit-timing discrepancy for this RRIP trace. Acceptance remains
   Partial until a reference-comparable RRIP replacement-conflict trace is run.
+- Batch aging from RRPV 0 at `k = 64` now completes in the Phase 06 harness
+  and in a five-access engine trace (`Ticks - 409`), matching `refCache`.
+  The previous increment loop was killed by a 3-second timeout on the same
+  input.
+
+## On-Demand Lines (2026-09-17)
+
+`cache_replacement_target` allocates the next empty way through
+`cache_ensure_line` instead of assuming every way exists after init. Victim
+selection among valid lines is unchanged. Phase 06 tests seed ways with
+`cache_ensure_line`.

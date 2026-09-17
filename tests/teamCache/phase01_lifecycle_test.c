@@ -100,22 +100,22 @@ static void check_storage(char** argv, size_t expected_sets, size_t expected_way
     assert(state.policy == expected_policy && state.rrip_bits == expected_rrip);
     assert(state.write_buffer_mode == expected_wb);
     for (size_t s = 0; s < expected_sets; ++s)
-    {
-        assert(state.sets[s] != NULL);
-        for (size_t w = 0; w < expected_ways; ++w)
-        {
-            cache_line* line = state.sets[s][w];
-            assert(line != NULL);
-            assert(!line->valid && !line->dirty);
-            assert(line->tag == 0 && line->time_stamp == 0);
-        }
-    }
-    /* Mutating one object must not change another line or another set. */
-    state.sets[0][0]->tag = UINT64_MAX;
+        assert(state.sets[s] == NULL);
+    cache_line* first = cache_ensure_line(&state, 0, 0);
+    assert(first != NULL && !first->valid && !first->dirty);
+    assert(first->tag == 0 && first->time_stamp == 0);
+    first->tag = UINT64_MAX;
     if (expected_ways > 1)
-        assert(state.sets[0][1]->tag == 0);
+    {
+        cache_line* other_way = cache_ensure_line(&state, 0, 1);
+        assert(other_way != NULL && other_way != first && other_way->tag == 0);
+    }
     if (expected_sets > 1)
-        assert(state.sets[1][0]->tag == 0);
+    {
+        assert(state.sets[1] == NULL);
+        cache_line* other_set = cache_ensure_line(&state, 1, 0);
+        assert(other_set != NULL && other_set != first && other_set->tag == 0);
+    }
     cache_storage_destroy(&state);
     assert_empty(&state);
     cache_storage_destroy(&state);

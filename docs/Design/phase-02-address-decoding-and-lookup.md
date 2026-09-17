@@ -29,6 +29,7 @@ processor requests. Those behaviors remain assigned to later phases.
 - `teamCache/cache_internal.h`: `cache_state` retains s/E/b/S/B and nested
   line pointers; `cache_line` contains valid, tag, last-access, and dirty fields.
 - `teamCache/lifecycle.c`: allocated lines start invalid with zero metadata.
+  After 2026-09-17, unused sets are NULL until `cache_ensure_line` creates them.
 - `teamCache/cache.c`: owns the private state object and framework entry points.
 
 ## Student Proposal and Reasoning

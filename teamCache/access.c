@@ -27,14 +27,30 @@ static void mark_dirty(cache_line* line, enum op_type op)
         line->dirty = true;
 }
 
+static void complete_fill(cache_state* state, cache_request* request,
+                          uint64_t address)
+{
+    cache_line* line = request->target;
+    if (line == NULL || line->valid)
+        fail("fill target is not available");
+    line->tag = (address >> state->b) >> state->s;
+    line->dirty = false;
+    cache_replacement_fill(state, line);
+    mark_dirty(line, request->op.op);
+    line->valid = true;
+    request->status = REQUEST_READY;
+    if (state->write_buffer != NULL && state->write_buffer->request == request)
+        state->write_buffer->data_complete = true;
+}
+
 static void fetch(cache_state* state, coher* coherence, cache_request* request)
 {
     request->status = REQUEST_WAITING_DATA;
     if (coherence == NULL || coherence->permReq == NULL)
         fail("missing coherence request interface");
-    if (coherence->permReq(false, block_address(state, request->op.memAddress),
-                           request->processor))
-        fail("lookup miss but coherence already grants permission; check state consistency");
+    uint64_t address = block_address(state, request->op.memAddress);
+    if (coherence->permReq(false, address, request->processor))
+        complete_fill(state, request, address);
 }
 
 static void trace_access(const cache_state* state, const cache_request* request,
@@ -81,15 +97,13 @@ static void start_miss(cache_state* state, coher* coherence,
         fetch(state, coherence, request);
 }
 
-/* Only the selected head performs lookup, replacement or lower requests. */
-static void start_next_block(cache_state* state, coher* coherence)
+/* Lookup the already-selected active block. A waiting buffer request reuses
+ * this path after the background fill, so a same-line wait can become a hit.
+ */
+static void process_active_block(cache_state* state, coher* coherence)
 {
-    cache_request* request = cache_split_take(state);
-    state->active = request;
-    request->status = REQUEST_WAITING_DATA;
-    const trace_op* op = &request->op;
-
-    cache_line* line = cache_lookup(state, op->memAddress);
+    cache_request* request = state->active;
+    cache_line* line = cache_lookup(state, request->op.memAddress);
     if (line != NULL)
     {
         trace_access(state, request, "Hit");
@@ -100,6 +114,16 @@ static void start_next_block(cache_state* state, coher* coherence)
     }
 
     start_miss(state, coherence, request);
+}
+
+/* Only the selected head performs lookup, replacement or lower requests. */
+static void start_next_block(cache_state* state, coher* coherence)
+{
+    cache_request* request = cache_split_take(state);
+    if (request == NULL)
+        fail("block request allocation failed");
+    state->active = request;
+    process_active_block(state, coherence);
 }
 
 static bool current_request_idle(const cache_state* state)
@@ -120,6 +144,14 @@ static void start_next_request(cache_state* state, coher* coherence)
     if (error != NULL)
         fail(error);
     start_next_block(state, coherence);
+}
+
+static void resume_after_write_buffer(cache_state* state, coher* coherence)
+{
+    if (state->active != NULL && state->active->status == REQUEST_WAITING_BUFFER)
+        process_active_block(state, coherence);
+    else if (state->active == NULL)
+        start_next_request(state, coherence);
 }
 
 void cache_access_request(cache_state* state, coher* coherence,
@@ -185,29 +217,16 @@ void cache_access_event(cache_state* state, coher* coherence, int type, int proc
     if (request == NULL)
         fail("data event does not match the waiting request");
 
-    cache_line* line = request->target;
-    if (line == NULL || line->valid)
-        fail("fill target is not available");
-    line->tag = (address >> state->b) >> state->s;
-    line->dirty = false;
-    cache_replacement_fill(state, line);
-    mark_dirty(line, request->op.op);
-    line->valid = true;
-    request->status = REQUEST_READY;
+    complete_fill(state, request, address);
     if (request == background)
     {
         cache_write_buffer* buffer = state->write_buffer;
-        buffer->data_complete = true;
         if (buffer->processor_notified)
         {
             state->write_buffer = NULL;
             free(request);
             free(buffer);
-            if (foreground != NULL
-                && foreground->status == REQUEST_WAITING_BUFFER)
-                start_miss(state, coherence, foreground);
-            else if (foreground == NULL)
-                start_next_request(state, coherence);
+            resume_after_write_buffer(state, coherence);
         }
     }
 }
@@ -228,7 +247,7 @@ void cache_access_tick(cache_state* state, coher* coherence)
             state->write_buffer = NULL;
             free(buffered);
             free(buffer);
-            start_next_request(state, coherence);
+            resume_after_write_buffer(state, coherence);
         }
     }
 

@@ -120,9 +120,9 @@ static void test_rrip_access_and_victim_flow(void)
 static void test_first_invalid_and_first_maximum(void)
 {
     init_state("3", "3");
-    cache_line* first = state.sets[0][0];
-    cache_line* second = state.sets[0][1];
-    cache_line* third = state.sets[0][2];
+    cache_line* first = cache_ensure_line(&state, 0, 0);
+    cache_line* second = cache_ensure_line(&state, 0, 1);
+    cache_line* third = cache_ensure_line(&state, 0, 2);
 
     first->valid = true;
     first->time_stamp = 7;
@@ -142,8 +142,8 @@ static void test_first_invalid_and_first_maximum(void)
 static void test_k_boundaries(void)
 {
     init_state("64", "2");
-    cache_line* first = state.sets[0][0];
-    cache_line* second = state.sets[0][1];
+    cache_line* first = cache_ensure_line(&state, 0, 0);
+    cache_line* second = cache_ensure_line(&state, 0, 1);
     first->valid = second->valid = true;
 
     cache_replacement_fill(&state, first);
@@ -155,10 +155,16 @@ static void test_k_boundaries(void)
     assert(second->time_stamp == UINT64_MAX);
     cache_replacement_hit(&state, second);
     assert(second->time_stamp == 0);
+    cache_replacement_hit(&state, first);
+    assert(first->time_stamp == 0);
+    /* Aging from 0 to 2^64-1 must remain O(E), not O(2^k) increments. */
+    assert(cache_replacement_target(&state, 0) == first);
+    assert(first->time_stamp == UINT64_MAX);
+    assert(second->time_stamp == UINT64_MAX);
     cache_storage_destroy(&state);
 
     init_state("1", "1");
-    first = state.sets[0][0];
+    first = cache_ensure_line(&state, 0, 0);
     first->valid = true;
     cache_replacement_fill(&state, first);
     assert(first->time_stamp == 0);
@@ -174,17 +180,19 @@ static void test_lru_regression(void)
     assert(cache_storage_init(&state, &args));
     assert(state.policy == CACHE_POLICY_LRU);
 
-    for (size_t way = 0; way < state.E; ++way)
-        state.sets[0][way]->valid = true;
-    state.sets[0][0]->time_stamp = 5;
-    state.sets[0][1]->time_stamp = 2;
-    state.sets[0][2]->time_stamp = 2;
-    assert(cache_replacement_target(&state, 0) == state.sets[0][1]);
+    cache_line* first = cache_ensure_line(&state, 0, 0);
+    cache_line* second = cache_ensure_line(&state, 0, 1);
+    cache_line* third = cache_ensure_line(&state, 0, 2);
+    first->valid = second->valid = third->valid = true;
+    first->time_stamp = 5;
+    second->time_stamp = 2;
+    third->time_stamp = 2;
+    assert(cache_replacement_target(&state, 0) == second);
 
-    cache_replacement_hit(&state, state.sets[0][0]);
-    assert(state.sets[0][0]->time_stamp == 1);
-    cache_replacement_fill(&state, state.sets[0][2]);
-    assert(state.sets[0][2]->time_stamp == 2);
+    cache_replacement_hit(&state, first);
+    assert(first->time_stamp == 1);
+    cache_replacement_fill(&state, third);
+    assert(third->time_stamp == 2);
     cache_storage_destroy(&state);
 }
 

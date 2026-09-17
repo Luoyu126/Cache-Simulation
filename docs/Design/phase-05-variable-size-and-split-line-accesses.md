@@ -462,3 +462,39 @@ hit/miss/eviction classification. For `S 0xf,2; L 0x0,1` with 16-byte blocks,
 `teamCache` and `refCache` now both report the lower miss, later-block miss,
 final hit, and 204 ticks. This output correction does not alter the confirmed
 serial split scheduling or the separately documented split-eviction anomaly.
+
+## Confirmed Two-Line Cap and Cursor Split (2026-09-17)
+
+Student decision: after an access would span more than two consecutive cache
+lines, stop at the second line. Do not keep splitting through the remainder of
+a large `size`. Align with the reference's two-block treatment: if the
+inclusive last block is more than one block size beyond the first, set
+`last_block = first_block + B`.
+
+Student decision: do not pre-build N `cache_request` objects. Remember the
+original operation, `first_block`, and `last_block`. Allocate the current
+block request only when it becomes active; after it retires, advance by one
+block (`+= B`) the same way a `currAddr`/`lastAddr` cursor would.
+
+This supersedes the Phase 05 FIFO of all involved blocks and the three-block
+generalization in the earlier harness. `queue_head`/`queue_tail` remain in
+`cache_state` but are unused. `cache_completion` now also stores the original
+`op`, callback identity, and the two-block range.
+
+Review: `S 0x0f,18` with 16-byte blocks previously dirtied `0x00`, `0x10`, and
+`0x20`. It now accesses only `0x00` then `0x10`. A huge `size` no longer
+allocates one request per block.
+
+## Implementation Mapping (Updated)
+
+| File | Responsibility |
+|---|---|
+| `teamCache/split.h/.c` | Record the original request and at most two block endpoints; `cache_split_take` allocates one current `cache_request`. |
+| `teamCache/access.c` | Start the cursor's next block; retire READY on entry; notify once when `completed == total`. |
+| `tests/teamCache/phase05_split_test.c` | Two-line cap, cursor (no FIFO nodes), contained sizes, destroy, overflow. |
+
+### 2026-09-17 observed results
+
+Phase 01--08 harnesses pass. Public traces under `ex_rrip.config` and
+`ex_wb.config` match `refCache` ticks. `L 0,33` and `L 0,65536` with
+`s=0,E=4,b=4` both complete in 202 ticks for teamCache and refCache.

@@ -95,7 +95,9 @@ int main(int argc, char** argv)
     /* 0x1f..0x20: miss low block, then miss high block in address order. */
     issue(MEM_LOAD, 0x1f, 2, 91);
     assert(fetches == 1 && fetch_address[0] == 0x10);
-    assert(state.queue_head != NULL && state.queue_head->op.memAddress == 0x20);
+    assert(state.queue_head == NULL && state.completion->total == 2);
+    assert(state.completion->first_block == 0x10
+           && state.completion->last_block == 0x20);
     cache_access_tick(&state, &lower); /* Low data arrives; READY. */
     assert(state.active->status == REQUEST_READY && completions == 0);
     cache_access_tick(&state, &lower); /* Retire low and start high. */
@@ -116,14 +118,15 @@ int main(int argc, char** argv)
     cache_access_tick(&state, &lower);
     assert(completions == 1 && state.active == NULL && completed_tag == 92);
 
-    /* Three blocks: store dirties every installed block and still calls once. */
+    /* Spans more than two lines: only the first two consecutive blocks run. */
     completions = 0;
-    issue(MEM_STORE, 0x0f, 18, 93); /* blocks 0x00, 0x10, 0x20 */
+    issue(MEM_STORE, 0x0f, 18, 93); /* would cover 0x00, 0x10, 0x20 */
     assert(fetches == 3 && fetch_address[2] == 0x00);
+    assert(state.completion->total == 2 && state.completion->last_block == 0x10);
     drain(93);
     assert(cache_lookup(&state, 0x00)->dirty);
     assert(cache_lookup(&state, 0x10)->dirty);
-    assert(cache_lookup(&state, 0x20)->dirty);
+    assert(cache_lookup(&state, 0x20) != NULL && !cache_lookup(&state, 0x20)->dirty);
 
     /* Supported sizes remain one block when their inclusive range fits. */
     const int sizes[] = {1, 2, 4, 8};
@@ -143,10 +146,11 @@ int main(int argc, char** argv)
            && state.completion == NULL);
     cache_storage_destroy(&state);
 
-    /* Destroy owns both an active block and its unstarted split successors. */
+    /* Destroy owns the active block and the remaining cursor. */
     setup();
     issue(MEM_LOAD, 0x1f, 2, 94);
-    assert(state.active != NULL && state.queue_head != NULL);
+    assert(state.active != NULL && state.completion != NULL
+           && state.completion->completed == 0);
     cache_access_destroy(&state);
     assert(state.active == NULL && state.queue_head == NULL
            && state.completion == NULL);

@@ -24,8 +24,9 @@ static void check_lookup(cache_state* state, uint64_t addr, cache_line* expected
         sets[s] = state->sets[s];
         for (size_t w = 0; w < state->E; ++w)
         {
-            lines[s][w] = state->sets[s][w];
-            before[s][w] = *lines[s][w];
+            lines[s][w] = sets[s] == NULL ? NULL : state->sets[s][w];
+            if (lines[s][w] != NULL)
+                before[s][w] = *lines[s][w];
         }
     }
 
@@ -36,8 +37,10 @@ static void check_lookup(cache_state* state, uint64_t addr, cache_line* expected
         assert(state->sets[s] == sets[s]);
         for (size_t w = 0; w < state->E; ++w)
         {
-            cache_line* line = state->sets[s][w];
+            cache_line* line = sets[s] == NULL ? NULL : state->sets[s][w];
             assert(line == lines[s][w]);
+            if (line == NULL)
+                continue;
             assert(line->valid == before[s][w].valid);
             assert(line->tag == before[s][w].tag);
             assert(line->time_stamp == before[s][w].time_stamp);
@@ -54,14 +57,15 @@ static void check_four_sets(void)
     cache_sim_args args = {7, argv, NULL};
     assert(cache_storage_init(&state, &args));
 
-    /* Initially invalid tag-zero lines must not count as hits. */
+    /* Unused sets and invalid tag-zero lines must not count as hits. */
     check_lookup(&state, 0, NULL);
     /* A valid tag in the wrong set must not count either. */
-    *state.sets[0][0] = (cache_line){.valid = true, .tag = 0, .time_stamp = 9};
+    *cache_ensure_line(&state, 0, 0) =
+        (cache_line){.valid = true, .tag = 0, .time_stamp = 9};
     check_lookup(&state, 0x10, NULL);
 
     /* Invalid way 0 must not prevent a hit in way 1. */
-    *state.sets[1][1] = (cache_line){
+    *cache_ensure_line(&state, 1, 1) = (cache_line){
         .valid = true, .tag = 0, .time_stamp = 37, .dirty = true
     };
     check_lookup(&state, 0x10, state.sets[1][1]);
@@ -70,14 +74,16 @@ static void check_four_sets(void)
     check_lookup(&state, 0x20, NULL);
     check_lookup(&state, 0x50, NULL); /* Same set, different tag; one empty way. */
 
-    *state.sets[1][0] = (cache_line){.valid = true, .tag = 1, .time_stamp = 42};
+    *cache_ensure_line(&state, 1, 0) =
+        (cache_line){.valid = true, .tag = 1, .time_stamp = 42};
     check_lookup(&state, 0x50, state.sets[1][0]);
     check_lookup(&state, 0x18, state.sets[1][1]); /* Hit in a full set. */
     check_lookup(&state, 0x90, NULL); /* Miss in a full set. */
 
     /* High and low addresses differ only in bits a 32-bit decode would lose. */
-    *state.sets[3][0] = (cache_line){.valid = true, .tag = UINT64_C(0x3ffffff)};
-    *state.sets[3][1] = (cache_line){
+    *cache_ensure_line(&state, 3, 0) =
+        (cache_line){.valid = true, .tag = UINT64_C(0x3ffffff)};
+    *cache_ensure_line(&state, 3, 1) = (cache_line){
         .valid = true, .tag = UINT64_C(0x03ffffffffffffff), .dirty = true
     };
     check_lookup(&state, UINT64_C(0xffffffff), state.sets[3][0]);
@@ -97,7 +103,8 @@ static void check_single_set(void)
     cache_sim_args args = {7, argv, NULL};
     assert(cache_storage_init(&state, &args));
     check_lookup(&state, UINT64_MAX, NULL);
-    *state.sets[0][0] = (cache_line){.valid = true, .tag = 1, .time_stamp = 99};
+    *cache_ensure_line(&state, 0, 0) =
+        (cache_line){.valid = true, .tag = 1, .time_stamp = 99};
     check_lookup(&state, 0x400, state.sets[0][0]);
     check_lookup(&state, 0x7ff, state.sets[0][0]);
     check_lookup(&state, 0x800, NULL);

@@ -1,6 +1,7 @@
 #include "access.h"
 #include "lifecycle.h"
 #include "request_queue.h"
+#include "split.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -123,7 +124,8 @@ static void test_fifo_and_split_transition(void)
     assert(state.active != NULL && state.active->processor == 3);
     assert(state.active->op.memAddress == 0x1f);
     assert(state.active->status == REQUEST_READY);
-    assert(state.queue_head != NULL && state.queue_head->op.memAddress == 0x20);
+    assert(state.queue_head == NULL && state.completion->total == 2);
+    assert(state.completion->last_block == 0x20);
     assert(state.request_queue_head == NULL);
 
     cache_access_tick(&state, &lower); /* Retire low block; start high miss. */

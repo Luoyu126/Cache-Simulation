@@ -111,12 +111,19 @@ are not claimed as independently student-authored design decisions.
   pointers for each set. The student explicitly selects pointer elements and
   heap storage for line objects, motivated by flexible, noncontiguous placement.
   Allocation granularity is confirmed below; ownership and cleanup remain Open.
-- Confirmed allocation timing and granularity: during `init()`, use the runtime
-  dimensions to allocate each set's E pointer slots and separately allocate a
-  heap line object for every slot. The student describes all initial line
-  contents as "empty"; subsequently confirmed all four fields start at zero.
-  Specification
-  reminder: the number of sets is S = 2^s, not s.
+- Confirmed allocation timing and granularity (superseded 2026-09-17): during
+  `init()`, use the runtime dimensions to allocate each set's E pointer slots
+  and separately allocate a heap line object for every slot. The student
+  describes all initial line contents as "empty"; subsequently confirmed all
+  four fields start at zero. Specification reminder: the number of sets is
+  S = 2^s, not s.
+- Confirmed on-demand storage (2026-09-17): `init` allocates only the outer
+  `sets` pointer table of length S, all NULL. A set's E-slot array and each
+  line object are allocated on first use through `cache_ensure_line`. Unused
+  sets remain NULL. Invalid configs that could not store a fully populated
+  cache still fail the existing overflow checks before that table is allocated.
+  Destruction still skips NULL sets and NULL line slots. This supersedes eager
+  allocation of every line at init.
 - Confirmed deferral: the student requests postponing the written/read marker's
   operational semantics until eviction work. Keep this as an explicit follow-up;
   do not silently choose update rules during Phase 01.

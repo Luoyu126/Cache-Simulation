@@ -451,3 +451,15 @@ Every numeric claim should be traceable to a raw file and derivation script.
   conflicts, set-local LRU, `wide.trace`, RRIP `load.trace`, and
   `wb-test.trace`. The Phase 05 discrepancy above is the remaining checked
   mismatch.
+
+## 2026-09-17 Split Cap, Cursor, and Lazy Storage
+
+Student-directed implementation changes on `develop`:
+
+- Split work stops after two consecutive lines.
+- Split state is a cursor (`first_block`/`last_block`), not N queued
+  `cache_request` objects.
+- Cache sets and lines grow on demand.
+
+These are intended to match the reference's large-`size` wall-clock behavior
+while keeping invalid full-cache overflow checks.

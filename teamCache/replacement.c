@@ -1,4 +1,5 @@
 #include "replacement.h"
+#include "lifecycle.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -41,22 +42,29 @@ static cache_line* lru_victim(cache_state* state, size_t set_index)
 static cache_line* rrip_victim(cache_state* state, size_t set_index)
 {
     uint64_t maximum = rrip_max(state);
-    for (;;)
+    uint64_t highest = state->sets[set_index][0]->time_stamp;
+    for (size_t way = 1; way < state->E; ++way)
     {
-        for (size_t way = 0; way < state->E; ++way)
-        {
-            cache_line* line = state->sets[set_index][way];
-            if (line->time_stamp == maximum)
-                return line;
-        }
-
-        /*
-         * The preceding scan proves every value is below maximum, so this
-         * increment cannot wrap even when k is 64.
-         */
-        for (size_t way = 0; way < state->E; ++way)
-            ++state->sets[set_index][way]->time_stamp;
+        uint64_t value = state->sets[set_index][way]->time_stamp;
+        if (value > highest)
+            highest = value;
     }
+
+    /*
+     * One aging step of (maximum - highest) is equivalent to incrementing
+     * every RRPV until some line reaches 2^k-1. All values are at most
+     * maximum, so the add cannot wrap even when k is 64.
+     */
+    uint64_t delta = maximum - highest;
+    cache_line* victim = NULL;
+    for (size_t way = 0; way < state->E; ++way)
+    {
+        cache_line* line = state->sets[set_index][way];
+        line->time_stamp += delta;
+        if (victim == NULL && line->time_stamp == maximum)
+            victim = line;
+    }
+    return victim;
 }
 
 void cache_replacement_hit(cache_state* state, cache_line* line)
@@ -82,7 +90,9 @@ cache_line* cache_replacement_target(cache_state* state, size_t set_index)
     assert(state != NULL && set_index < state->S && state->E > 0);
     for (size_t way = 0; way < state->E; ++way)
     {
-        cache_line* line = state->sets[set_index][way];
+        cache_line* line = cache_ensure_line(state, set_index, way);
+        if (line == NULL)
+            fail("cache line allocation failed");
         if (!line->valid)
             return line;
     }

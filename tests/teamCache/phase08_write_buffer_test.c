@@ -15,6 +15,7 @@ static uint64_t permission_address[8], eviction_address[8];
 static int completed_processor[8];
 static int64_t completed_tag[8];
 static bool delayed_eviction;
+static bool grant_permission;
 
 static void direct_event(int type, int processor, int64_t address)
 {
@@ -30,7 +31,7 @@ static uint8_t permission(uint8_t is_read, uint64_t address, int processor)
 {
     assert(is_read == 0 && processor >= 0 && permissions < 8);
     permission_address[permissions++] = address;
-    return 0;
+    return grant_permission ? 1 : 0;
 }
 
 static uint8_t invalidate(uint64_t address, int processor)
@@ -74,6 +75,7 @@ static void setup(char* ways, bool buffered)
     register_callback(direct_event);
     lower_ticks = permissions = evictions = completions = 0;
     delayed_eviction = false;
+    grant_permission = false;
 }
 
 static void issue(enum op_type kind, uint64_t address, int size,
@@ -145,7 +147,7 @@ static void test_early_store_callback_and_queued_hit(void)
 static void test_delayed_background_eviction(void)
 {
     setup("1", true);
-    cache_line* victim = state.sets[0][0];
+    cache_line* victim = cache_ensure_line(&state, 0, 0);
     *victim = (cache_line){
         .valid = true, .tag = 0, .time_stamp = 1, .dirty = true
     };
@@ -202,6 +204,52 @@ static void test_foreground_miss_waits_for_buffer(void)
     cache_storage_destroy(&state);
 }
 
+static void test_waiting_buffer_same_line_becomes_hit(void)
+{
+    setup("4", true);
+    install_initial_line();
+
+    issue(MEM_STORE, 0x10, 4, 0, 2);
+    cache_access_tick(&state, &lower);
+    cache_access_tick(&state, &lower);
+    assert(state.write_buffer != NULL && completions == 2);
+
+    issue(MEM_LOAD, 0x10, 4, 0, 3);
+    cache_access_tick(&state, &lower);
+    assert(state.active != NULL);
+    assert(state.active->status == REQUEST_WAITING_BUFFER);
+    assert(permissions == 2);
+
+    event_callback(DATA_RECV, 0, 0x10);
+    assert(state.write_buffer == NULL && state.active != NULL);
+    assert(state.active->status == REQUEST_READY);
+    assert(permissions == 2);
+    cache_line* stored = cache_lookup(&state, 0x10);
+    assert(stored != NULL && stored->dirty);
+
+    cache_access_tick(&state, &lower);
+    assert(completions == 3 && completed_tag[2] == 3);
+    cache_access_destroy(&state);
+    cache_storage_destroy(&state);
+}
+
+static void test_immediate_permission_fill(void)
+{
+    setup("4", false);
+    grant_permission = true;
+    issue(MEM_LOAD, 0x00, 4, 0, 11);
+    cache_access_tick(&state, &lower);
+    assert(permissions == 1 && permission_address[0] == 0x00);
+    assert(state.active != NULL && state.active->status == REQUEST_READY);
+    cache_line* line = cache_lookup(&state, 0x00);
+    assert(line != NULL && line->valid && !line->dirty);
+    assert(completions == 0);
+    cache_access_tick(&state, &lower);
+    assert(completions == 1 && completed_tag[0] == 11);
+    cache_access_destroy(&state);
+    cache_storage_destroy(&state);
+}
+
 static void test_contained_split_and_mode_zero_stores(void)
 {
     setup("4", true);
@@ -220,7 +268,7 @@ static void test_contained_split_and_mode_zero_stores(void)
     issue(MEM_STORE, 0x00, 32, 0, 32);
     cache_access_tick(&state, &lower);
     assert(state.write_buffer == NULL && state.active != NULL);
-    assert(state.completion->total == 2 && state.queue_head != NULL);
+    assert(state.completion->total == 2 && state.queue_head == NULL);
     cache_access_destroy(&state);
     cache_storage_destroy(&state);
 
@@ -250,6 +298,8 @@ int main(void)
     test_early_store_callback_and_queued_hit();
     test_delayed_background_eviction();
     test_foreground_miss_waits_for_buffer();
+    test_waiting_buffer_same_line_becomes_hit();
+    test_immediate_permission_fill();
     test_contained_split_and_mode_zero_stores();
     test_destroy_occupied_buffer();
     puts("Phase 08 write-buffer checks passed");
