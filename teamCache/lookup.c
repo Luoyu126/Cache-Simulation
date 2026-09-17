@@ -11,10 +11,13 @@ cache_line* cache_lookup(const cache_state* state, uint64_t addr)
     size_t set_index = (size_t)(block_number & ((uint64_t)state->S - 1));
     uint64_t tag = block_number >> state->s;
 
+    cache_line** set = state->sets[set_index];
+    if (set == NULL)
+        return NULL;
     for (size_t way = 0; way < state->E; ++way)
     {
-        cache_line* line = state->sets[set_index][way];
-        if (line->valid && line->tag == tag)
+        cache_line* line = set[way];
+        if (line != NULL && line->valid && line->tag == tag)
             return line;
     }
     return NULL;

@@ -20,7 +20,7 @@ typedef enum cache_policy {
 } cache_policy;
 
 typedef struct cache_state {
-    /* sets[set_index][way] points to an individually allocated cache_line. */
+    /* sets[set_index] is allocated on first use; ways grow as NULL line slots. */
     cache_line*** sets;
     unsigned int s;
     size_t E;
@@ -29,9 +29,9 @@ typedef struct cache_state {
     size_t B;
 
     struct cache_request* active; /* Owned; NULL when no request is pending. */
-    struct cache_request* queue_head; /* Owned pending blocks, low address first. */
+    struct cache_request* queue_head; /* Unused; split now uses a two-block cursor. */
     struct cache_request* queue_tail;
-    struct cache_completion* completion; /* One original request's count entry. */
+    struct cache_completion* completion; /* Cursor and count for one original request. */
     struct original_request* request_queue_head; /* Owned arrival-order FIFO. */
     struct original_request* request_queue_tail;
     struct cache_write_buffer* write_buffer; /* One background store miss. */

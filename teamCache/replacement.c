@@ -1,4 +1,5 @@
 #include "replacement.h"
+#include "lifecycle.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -89,7 +90,9 @@ cache_line* cache_replacement_target(cache_state* state, size_t set_index)
     assert(state != NULL && set_index < state->S && state->E > 0);
     for (size_t way = 0; way < state->E; ++way)
     {
-        cache_line* line = state->sets[set_index][way];
+        cache_line* line = cache_ensure_line(state, set_index, way);
+        if (line == NULL)
+            fail("cache line allocation failed");
         if (!line->valid)
             return line;
     }

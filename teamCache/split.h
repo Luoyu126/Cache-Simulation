@@ -3,15 +3,19 @@
 
 #include "access.h"
 
-/* One keyed entry: Phase 05 accepts only one original processor request. */
+/* One original request: at most two consecutive blocks, advanced by a cursor. */
 typedef struct cache_completion {
+    trace_op op;
     int processor;
     int64_t request_tag;
+    void (*callback)(int, int64_t);
+    uint64_t first_block;
+    uint64_t last_block;
     uint64_t total;
     uint64_t completed;
 } cache_completion;
 
-/* Build all parts before starting any access. NULL means success. */
+/* Record the original request and its one- or two-block range. NULL means success. */
 const char* cache_split_prepare(cache_state* state, const trace_op* op,
                                 int processor, int64_t tag,
                                 void (*callback)(int, int64_t));

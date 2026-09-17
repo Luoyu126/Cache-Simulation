@@ -120,6 +120,8 @@ static void process_active_block(cache_state* state, coher* coherence)
 static void start_next_block(cache_state* state, coher* coherence)
 {
     cache_request* request = cache_split_take(state);
+    if (request == NULL)
+        fail("block request allocation failed");
     state->active = request;
     process_active_block(state, coherence);
 }

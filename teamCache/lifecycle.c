@@ -126,7 +126,6 @@ static bool derive_dimensions(cache_state* state)
     state->S = (size_t)1 << state->s;
     state->B = (size_t)1 << state->b;
 
-    /* Check all host storage, even though the lines are allocated separately. */
     if (state->S > SIZE_MAX / sizeof(*state->sets)
         || state->E > SIZE_MAX / state->S)
         return error("cache dimensions overflow host storage size");
@@ -137,6 +136,34 @@ static bool derive_dimensions(cache_state* state)
     if (line_count > (SIZE_MAX - outer_bytes) / bytes_per_line)
         return error("cache allocation size overflows size_t");
     return true;
+}
+
+static cache_line** ensure_set(cache_state* state, size_t set_index)
+{
+    if (state->sets[set_index] == NULL)
+    {
+        state->sets[set_index] = calloc(state->E, sizeof(*state->sets[set_index]));
+        if (state->sets[set_index] == NULL)
+            return NULL;
+    }
+    return state->sets[set_index];
+}
+
+cache_line* cache_ensure_line(cache_state* state, size_t set_index, size_t way)
+{
+    if (state == NULL || state->sets == NULL || set_index >= state->S
+        || way >= state->E)
+        return NULL;
+    cache_line** set = ensure_set(state, set_index);
+    if (set == NULL)
+        return NULL;
+    if (set[way] == NULL)
+    {
+        set[way] = calloc(1, sizeof(*set[way]));
+        if (set[way] == NULL)
+            return NULL;
+    }
+    return set[way];
 }
 
 void cache_storage_destroy(cache_state* state)
@@ -169,18 +196,6 @@ bool cache_storage_init(cache_state* state, const cache_sim_args* args)
     state->sets = calloc(state->S, sizeof(*state->sets));
     if (state->sets == NULL)
         goto allocation_failed;
-    for (size_t set = 0; set < state->S; ++set)
-    {
-        state->sets[set] = calloc(state->E, sizeof(*state->sets[set]));
-        if (state->sets[set] == NULL)
-            goto allocation_failed;
-        for (size_t way = 0; way < state->E; ++way)
-        {
-            state->sets[set][way] = calloc(1, sizeof(cache_line));
-            if (state->sets[set][way] == NULL)
-                goto allocation_failed;
-        }
-    }
     return true;
 
 allocation_failed:
