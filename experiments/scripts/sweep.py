@@ -65,32 +65,31 @@ def main():
     candidates = gen_candidates()
     print(f"{len(candidates)} candidates pass the 54KB filter")
 
-    results = []
-    for i, (s, E, b, policy, k) in enumerate(candidates):
-        cfg_path = os.path.join(CONFIG_DIR, f"cand_{i}.config")
-        make_config(cfg_path, s, E, b, policy, k)
-        aats = []
-        for t in TRACES:
-            ticks = run_one(cfg_path, os.path.join(TRACE_DIR, t))
-            if ticks is None:
-                aats = None
-                break
-            aats.append(ticks / access_counts[t])
-        if aats is None:
-            continue
-        avg_aat = sum(aats) / len(aats)
-        results.append((s, E, b, policy, k, *aats, avg_aat))
-        print(f"[{i+1}/{len(candidates)}] s={s} E={E} b={b} {policy} k={k} "
-              f"avg_AAT={avg_aat:.4f}")
-
-    results.sort(key=lambda r: r[-1])
     out_csv = os.path.join(REPO, "experiments/derived/candidates.csv")
     with open(out_csv, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["s", "E", "b", "policy", "k"] + TRACES + ["avg_AAT"])
-        w.writerows(results)
-    print(f"\nWrote {len(results)} results to {out_csv}")
-    print("Best candidate:", results[0] if results else "none")
+        writer = csv.writer(f)
+        writer.writerow(["s", "E", "b", "policy", "k"] + TRACES + ["avg_AAT"])
+
+        for i, (s, E, b, policy, k) in enumerate(candidates):
+            cfg_path = os.path.join(CONFIG_DIR, f"cand_{i}.config")
+            make_config(cfg_path, s, E, b, policy, k)
+            aats = []
+            for t in TRACES:
+                ticks = run_one(cfg_path, os.path.join(TRACE_DIR, t))
+                if ticks is None:
+                    aats = None
+                    break
+                aats.append(ticks / access_counts[t])
+            if aats is None:
+                print(f"[{i+1}/{len(candidates)}] FAILED s={s} E={E} b={b} {policy} k={k}")
+                continue
+            avg_aat = sum(aats) / len(aats)
+            writer.writerow([s, E, b, policy, k, *aats, avg_aat])
+            f.flush()  # <-- write to disk immediately, don't wait for buffer
+            print(f"[{i+1}/{len(candidates)}] s={s} E={E} b={b} {policy} k={k} "
+                  f"avg_AAT={avg_aat:.4f}")
+
+    print("Done. Results in", out_csv)
 
 if __name__ == "__main__":
     main()
