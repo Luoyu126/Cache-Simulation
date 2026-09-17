@@ -19,6 +19,8 @@ does not implement cache behavior.
 - The teammate's 15-213 repository remains a separate source of reusable ideas
   and is not part of the CADSS build.
 - Gradescope component selection uses `__cache__:teamCache`.
+- Phase harnesses live outside the submitted cache component directory, at
+  `tests/teamCache/`, so that `teamCache/` contains only component sources.
 
 ## Implementation Mapping
 
@@ -26,6 +28,38 @@ does not implement cache behavior.
 - `teamCache/CMakeLists.txt`: `teamCache` shared-library target
 - `CMakeLists.txt`: `add_subdirectory(teamCache)` registration
 - `submission`: selected cache component
+- `tests/teamCache/`: phase harnesses and their reference traces/configs
+
+## Harness Location and Submission Robustness
+
+`submission` names only the cache directory, so an autograder is free to build
+that directory itself instead of using `teamCache/CMakeLists.txt`. While the
+eight phase harnesses lived in `teamCache/tests/`, that directory contained
+eight `main` definitions, which breaks any build that compiles every source
+under the named cache directory. Locally this stayed invisible, because
+`teamCache/CMakeLists.txt` lists its nine component sources explicitly and
+never compiled the harnesses.
+
+Confirmed layout decision: harnesses and their data files moved to
+`tests/teamCache/`. The recorded strict-compilation commands keep `-IteamCache`,
+so harness `#include "lifecycle.h"` style includes still resolve and no harness
+source needed editing.
+
+Observed after the move:
+
+- Passing: all eight harnesses compile under
+  `-std=c11 -Wall -Wextra -Wpedantic -Werror` and pass.
+- Passing: `grep -rn 'int main' teamCache/` reports no matches.
+- Passing: compiling every `.c` under `teamCache/` into one shared library
+  succeeds, which is the condition that previously failed.
+- Passing: `cmake --build ... --target teamCache` still links
+  `libteamCache.so`.
+
+Open: whether this was the actual cause of the Gradescope
+`autograder failed to execute correctly` result is unconfirmed, because the
+autograder's build procedure is not published. A separate and still
+unexplained submission symptom is a 600-second autograder timeout, which was
+not reproduced on any checked-in trace.
 
 ## Acceptance Behaviors and Observed Results
 

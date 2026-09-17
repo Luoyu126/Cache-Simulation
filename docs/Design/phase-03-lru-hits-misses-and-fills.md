@@ -415,7 +415,7 @@ student approval to change the timing design.
 | `teamCache/cache_internal.h` | Owned active-request pointer and access sequence |
 | `teamCache/cache.c` | Short framework wrappers and lifecycle integration |
 | `teamCache/CMakeLists.txt` | Compile the access module |
-| `teamCache/tests/phase03_access_test.c` | Mock lower-tick delivery and contract checks |
+| `tests/teamCache/phase03_access_test.c` | Mock lower-tick delivery and contract checks |
 
 ## Commands and Observed Results
 
@@ -437,12 +437,12 @@ Reproduction commands from the repository root:
 
 ```sh
 cmake --build /tmp/cadss-phase01-build --target teamCache -j 4
-gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror -Icommon -IteamCache teamCache/tests/phase03_access_test.c teamCache/cache.c teamCache/access.c teamCache/lookup.c teamCache/lifecycle.c -o /tmp/cadss-phase01-build/phase03_access_test
+gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror -Icommon -IteamCache tests/teamCache/phase03_access_test.c teamCache/cache.c teamCache/access.c teamCache/lookup.c teamCache/lifecycle.c -o /tmp/cadss-phase01-build/phase03_access_test
 /tmp/cadss-phase01-build/phase03_access_test
 valgrind --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all --error-exitcode=99 /tmp/cadss-phase01-build/phase03_access_test
-gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror -Icommon -IteamCache teamCache/tests/phase01_lifecycle_test.c teamCache/cache.c teamCache/access.c teamCache/lookup.c teamCache/lifecycle.c -Wl,--wrap=calloc -Wl,--wrap=free -o /tmp/cadss-phase01-build/phase01_lifecycle_test
+gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror -Icommon -IteamCache tests/teamCache/phase01_lifecycle_test.c teamCache/cache.c teamCache/access.c teamCache/lookup.c teamCache/lifecycle.c -Wl,--wrap=calloc -Wl,--wrap=free -o /tmp/cadss-phase01-build/phase01_lifecycle_test
 /tmp/cadss-phase01-build/phase01_lifecycle_test
-gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror -Icommon -IteamCache teamCache/tests/phase02_lookup_test.c teamCache/lookup.c teamCache/lifecycle.c -o /tmp/cadss-phase01-build/phase02_lookup_test
+gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror -Icommon -IteamCache tests/teamCache/phase02_lookup_test.c teamCache/lookup.c teamCache/lifecycle.c -o /tmp/cadss-phase01-build/phase02_lookup_test
 /tmp/cadss-phase01-build/phase02_lookup_test
 ```
 
@@ -496,7 +496,7 @@ corrected runs above.
 ### Student-requested single-hit testcase
 
 The student requests testing exactly one hit. Cold initialization requires a
-warm-up miss, so the checked-in `teamCache/tests/phase03_one_hit.trace` contains
+warm-up miss, so the checked-in `tests/teamCache/phase03_one_hit.trace` contains
 two identical loads (`L 10,1` twice); `phase03_cold_load.trace` contains only the
 first load as baseline. `phase03_one_hit.config` explicitly disables victim
 cache, subblocking, and write buffering. Expected classifications are Miss/Hit
@@ -511,8 +511,8 @@ empty stderr.
 Reproduce from `/tmp/cadss-phase01-build`:
 
 ```sh
-/home/chenyy/cadss_public/cadss-engine -c teamCache -s /home/chenyy/cadss_public/teamCache/tests/phase03_one_hit.config -t /home/chenyy/cadss_public/teamCache/tests/phase03_one_hit.trace -v
-/home/chenyy/cadss_public/cadss-engine -c /home/chenyy/cadss_public/refCache -s /home/chenyy/cadss_public/teamCache/tests/phase03_one_hit.config -t /home/chenyy/cadss_public/teamCache/tests/phase03_one_hit.trace -v
+/home/chenyy/cadss_public/cadss-engine -c teamCache -s /home/chenyy/cadss_public/tests/teamCache/phase03_one_hit.config -t /home/chenyy/cadss_public/tests/teamCache/phase03_one_hit.trace -v
+/home/chenyy/cadss_public/cadss-engine -c /home/chenyy/cadss_public/refCache -s /home/chenyy/cadss_public/tests/teamCache/phase03_one_hit.config -t /home/chenyy/cadss_public/tests/teamCache/phase03_one_hit.trace -v
 ```
 
 For the baseline, replace the trace filename with `phase03_cold_load.trace`.

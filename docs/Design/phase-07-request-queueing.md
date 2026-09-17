@@ -131,7 +131,7 @@ destroy:
 - `teamCache/split.c`: unchanged inner FIFO; splits only the current outer
   request after it reaches the head.
 - `teamCache/CMakeLists.txt`: compiles `request_queue.c`.
-- `teamCache/tests/phase07_queue_test.c`: FIFO identity, caller-storage copy,
+- `tests/teamCache/phase07_queue_test.c`: FIFO identity, caller-storage copy,
   next-tick arrival/successor start, later callback boundary, queued split
   ordering, and destruction of both queue levels.
 
@@ -143,7 +143,7 @@ cmake --build /tmp/cadss-phase07-build --target teamCache cadss-engine trace \
   processor branch coherence interconnect memory -j 4
 
 gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror \
-  -Icommon -IteamCache teamCache/tests/phase07_queue_test.c \
+  -Icommon -IteamCache tests/teamCache/phase07_queue_test.c \
   teamCache/cache.c teamCache/access.c teamCache/eviction.c \
   teamCache/replacement.c teamCache/request_queue.c teamCache/split.c \
   teamCache/lookup.c teamCache/lifecycle.c -o /tmp/phase07_queue_test

@@ -204,9 +204,9 @@ Inherited from the roadmap:
 | `teamCache/access.c` | Fetch after eviction; matching completion events; refill selected target; verbose eviction classification |
 | `teamCache/cache.c` | Pass borrowed coherence to the event handler |
 | `teamCache/CMakeLists.txt` | Build eviction.c |
-| `teamCache/tests/phase03_access_test.c` | Adapt to internal event interface; prior expectations unchanged |
-| `teamCache/tests/phase04_eviction_test.c` | Victim selection, event ordering, metadata, ownership checks |
-| `teamCache/tests/phase04_*.trace` and `.config` | Reproducible reference traces |
+| `tests/teamCache/phase03_access_test.c` | Adapt to internal event interface; prior expectations unchanged |
+| `tests/teamCache/phase04_eviction_test.c` | Victim selection, event ordering, metadata, ownership checks |
+| `tests/teamCache/phase04_*.trace` and `.config` | Reproducible reference traces |
 
 The access sequence and hit completion timing are unchanged. Requests own no
 line memory, and destroy frees pending request storage before line storage.
@@ -235,7 +235,7 @@ Run from the repository root:
 
 ```sh
 cmake --build /tmp/cadss-phase01-build --target teamCache -j 4
-gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror -Icommon -IteamCache teamCache/tests/phase04_eviction_test.c teamCache/cache.c teamCache/access.c teamCache/eviction.c teamCache/lookup.c teamCache/lifecycle.c -o /tmp/cadss-phase01-build/phase04_eviction_test
+gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror -Icommon -IteamCache tests/teamCache/phase04_eviction_test.c teamCache/cache.c teamCache/access.c teamCache/eviction.c teamCache/lookup.c teamCache/lifecycle.c -o /tmp/cadss-phase01-build/phase04_eviction_test
 /tmp/cadss-phase01-build/phase04_eviction_test
 valgrind --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all --error-exitcode=99 /tmp/cadss-phase01-build/phase04_eviction_test
 ```
@@ -285,8 +285,8 @@ other-set block survived and the correct target-set victim was chosen.
 Run from `/tmp/cadss-phase01-build`:
 
 ```sh
-/home/chenyy/cadss_public/cadss-engine -c teamCache -s /home/chenyy/cadss_public/teamCache/tests/phase04_conflict.config -t /home/chenyy/cadss_public/teamCache/tests/phase04_clean_conflict.trace -v
-/home/chenyy/cadss_public/cadss-engine -c /home/chenyy/cadss_public/refCache -s /home/chenyy/cadss_public/teamCache/tests/phase04_conflict.config -t /home/chenyy/cadss_public/teamCache/tests/phase04_clean_conflict.trace -v
+/home/chenyy/cadss_public/cadss-engine -c teamCache -s /home/chenyy/cadss_public/tests/teamCache/phase04_conflict.config -t /home/chenyy/cadss_public/tests/teamCache/phase04_clean_conflict.trace -v
+/home/chenyy/cadss_public/cadss-engine -c /home/chenyy/cadss_public/refCache -s /home/chenyy/cadss_public/tests/teamCache/phase04_conflict.config -t /home/chenyy/cadss_public/tests/teamCache/phase04_clean_conflict.trace -v
 ```
 
 Repeat for dirty_conflict, and use phase04_set_lru.config with its corresponding

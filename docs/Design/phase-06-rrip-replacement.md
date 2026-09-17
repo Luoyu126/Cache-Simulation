@@ -176,7 +176,7 @@ The implemented field name is the student-selected `time_stamp`.
   from fill initialization.
 - `teamCache/eviction.c`: delegates placement and victim selection.
 - `teamCache/CMakeLists.txt`: compiles the replacement module.
-- `teamCache/tests/phase06_rrip_test.c`: integrated RRIP access flow and direct
+- `tests/teamCache/phase06_rrip_test.c`: integrated RRIP access flow and direct
   policy boundary tests.
 - Phase 01--04 tests use the renamed `time_stamp` field without changing their
   original expectations.
@@ -191,7 +191,7 @@ cmake --build /tmp/cadss-phase06-build --target teamCache cadss-engine trace \
   processor branch coherence interconnect memory -j 4
 
 gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror \
-  -Icommon -IteamCache teamCache/tests/phase06_rrip_test.c \
+  -Icommon -IteamCache tests/teamCache/phase06_rrip_test.c \
   teamCache/cache.c teamCache/access.c teamCache/eviction.c \
   teamCache/replacement.c teamCache/split.c teamCache/lookup.c \
   teamCache/lifecycle.c -o /tmp/phase06_rrip_test

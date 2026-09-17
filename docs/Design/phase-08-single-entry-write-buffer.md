@@ -464,7 +464,7 @@ address.
 - `teamCache/split.h/.c`: release the one-block processor completion record
   without freeing the background-owned request.
 - `teamCache/CMakeLists.txt`: compile `write_buffer.c`.
-- `teamCache/tests/phase08_write_buffer_test.c`: early callback, retained
+- `tests/teamCache/phase08_write_buffer_test.c`: early callback, retained
   background ownership, early hit lookup with delayed callback,
   `REQUEST_WAITING_BUFFER` miss resume, delayed dirty eviction,
   contained-address eligibility, split exclusion, `-w 0`, and cleanup.
@@ -492,7 +492,7 @@ cmake --build /tmp/cadss-phase08-build --target teamCache cadss-engine trace \
   processor branch coherence interconnect memory -j 4
 
 gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror \
-  -Icommon -IteamCache teamCache/tests/phase08_write_buffer_test.c \
+  -Icommon -IteamCache tests/teamCache/phase08_write_buffer_test.c \
   teamCache/cache.c teamCache/access.c teamCache/eviction.c \
   teamCache/replacement.c teamCache/request_queue.c teamCache/split.c \
   teamCache/write_buffer.c teamCache/lookup.c teamCache/lifecycle.c \

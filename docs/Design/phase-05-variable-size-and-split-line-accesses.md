@@ -404,7 +404,7 @@ comparison is empirical; do not change the confirmed timing just to force a matc
 | `teamCache/cache_internal.h` | Queue head/tail and the active original-request completion record. |
 | `teamCache/access.c` | Start only the FIFO head, retire one READY block per tick, start its successor in the same tick, and notify once on final retirement. |
 | `teamCache/CMakeLists.txt` | Compile `split.c`. |
-| `teamCache/tests/phase05_split_test.c` | Serial mixed hit/miss flow, same-tick successor start, multi-block metadata, destroy cleanup, and overflow rejection. |
+| `tests/teamCache/phase05_split_test.c` | Serial mixed hit/miss flow, same-tick successor start, multi-block metadata, destroy cleanup, and overflow rejection. |
 
 ## Commands and Observed Results
 
@@ -414,7 +414,7 @@ Passing checks from the repository root:
 cmake -S . -B /tmp/cadss-phase05-build -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build /tmp/cadss-phase05-build --target teamCache cadss-engine trace processor branch coherence interconnect memory -j 4
 gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror -Icommon -IteamCache \
-  teamCache/tests/phase05_split_test.c teamCache/cache.c teamCache/access.c \
+  tests/teamCache/phase05_split_test.c teamCache/cache.c teamCache/access.c \
   teamCache/eviction.c teamCache/split.c teamCache/lookup.c teamCache/lifecycle.c \
   -o /tmp/phase05_split_test
 /tmp/phase05_split_test

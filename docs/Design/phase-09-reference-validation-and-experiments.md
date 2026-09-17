@@ -176,14 +176,14 @@ crossing cache lines, not failure of natural alignment. The contained trace
 
 ### Focused harnesses
 
-- `teamCache/tests/phase01_lifecycle_test.c`
-- `teamCache/tests/phase02_lookup_test.c`
-- `teamCache/tests/phase03_access_test.c`
-- `teamCache/tests/phase04_eviction_test.c`
-- `teamCache/tests/phase05_split_test.c`
-- `teamCache/tests/phase06_rrip_test.c`
-- `teamCache/tests/phase07_queue_test.c`
-- `teamCache/tests/phase08_write_buffer_test.c`
+- `tests/teamCache/phase01_lifecycle_test.c`
+- `tests/teamCache/phase02_lookup_test.c`
+- `tests/teamCache/phase03_access_test.c`
+- `tests/teamCache/phase04_eviction_test.c`
+- `tests/teamCache/phase05_split_test.c`
+- `tests/teamCache/phase06_rrip_test.c`
+- `tests/teamCache/phase07_queue_test.c`
+- `tests/teamCache/phase08_write_buffer_test.c`
 
 The exact strict-compilation commands and latest Valgrind results are recorded
 in the corresponding phase documents. Phase 08's harness currently reports

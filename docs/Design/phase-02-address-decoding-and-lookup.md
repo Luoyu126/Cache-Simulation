@@ -190,7 +190,7 @@ From the repository root (reuse the Phase 01 build directory):
 ```sh
 cmake -S . -B /tmp/cadss-phase01-build -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build /tmp/cadss-phase01-build --target teamCache -j 4
-gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror -Icommon -IteamCache teamCache/tests/phase02_lookup_test.c teamCache/lookup.c teamCache/lifecycle.c -o /tmp/phase02_lookup_test
+gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Werror -Icommon -IteamCache tests/teamCache/phase02_lookup_test.c teamCache/lookup.c teamCache/lifecycle.c -o /tmp/phase02_lookup_test
 valgrind --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all --error-exitcode=99 /tmp/phase02_lookup_test
 git diff --check
 ```
@@ -215,7 +215,7 @@ cd /tmp/cadss-phase01-build
 - `teamCache/lookup.h`: borrowed-pointer contract and function declaration.
 - `teamCache/lookup.c:cache_lookup`: unsigned address decoding and hit-only scan.
 - `teamCache/CMakeLists.txt`: includes `lookup.c` in the shared-library target.
-- `teamCache/tests/phase02_lookup_test.c`: seeded-state acceptance checks with
+- `tests/teamCache/phase02_lookup_test.c`: seeded-state acceptance checks with
   fixed expectations and state-preservation snapshots; no fill implementation.
 
 ## Deviations and Follow-Ups

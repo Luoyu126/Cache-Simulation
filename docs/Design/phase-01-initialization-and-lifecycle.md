@@ -358,7 +358,7 @@ kept in a separate `tests/` directory and is not compiled into the component.
 | `teamCache/cache.c:init` | Private global state, public interface, borrowed coherence and callback registration |
 | `teamCache/cache.c:destroy` | Storage delegation, public-interface free, transient-state reset |
 | `teamCache/CMakeLists.txt` | Compile `cache.c` and `lifecycle.c` into `teamCache` |
-| `teamCache/tests/phase01_lifecycle_test.c` | Lifecycle acceptance harness and allocation-failure injection |
+| `tests/teamCache/phase01_lifecycle_test.c` | Lifecycle acceptance harness and allocation-failure injection |
 
 Existing starter access/tick/callback functions remain in `cache.c`; later
 phases will replace their placeholder behavior in the planned separate modules.
@@ -413,7 +413,7 @@ Run from the repository root:
 ```sh
 cmake -S . -B /tmp/cadss-phase01-build -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build /tmp/cadss-phase01-build --target teamCache cadss-engine trace processor branch coherence interconnect memory -j 4
-gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Icommon -IteamCache teamCache/tests/phase01_lifecycle_test.c teamCache/cache.c teamCache/lifecycle.c -Wl,--wrap=calloc -Wl,--wrap=free -o /tmp/cadss-phase01-build/phase01_lifecycle_test
+gcc -std=c11 -g -O0 -Wall -Wextra -Wpedantic -Icommon -IteamCache tests/teamCache/phase01_lifecycle_test.c teamCache/cache.c teamCache/lifecycle.c -Wl,--wrap=calloc -Wl,--wrap=free -o /tmp/cadss-phase01-build/phase01_lifecycle_test
 /tmp/cadss-phase01-build/phase01_lifecycle_test
 valgrind --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all --error-exitcode=99 --log-file=/tmp/cadss-phase01-build/lifecycle-valgrind.log /tmp/cadss-phase01-build/phase01_lifecycle_test
 git diff --check
