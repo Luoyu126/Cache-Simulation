@@ -86,7 +86,9 @@ static bool parse_options(cache_state* state, const cache_sim_args* args)
                 state->rrip_bits = (unsigned int)value;
                 break;
             case 'w':
-                if (value > 1)
+                /* 0: none, 1: single buffered write, 2: + coalesce/read
+                 * from buffer, 3+: + queue depth W. No spec'd upper bound. */
+                if (value > (uintmax_t)UINT_MAX)
                     goto range_error;
                 state->write_buffer_mode = (unsigned int)value;
                 break;

@@ -58,38 +58,81 @@ static void trace_access(const cache_state* state, const cache_request* request,
                request->processor, address, outcome);
 }
 
+/* Runs the eviction/fetch handshake for whichever request currently owns
+ * the single outstanding memory-request slot (a plain miss, or a write
+ * buffer entry that just became the head of the FIFO). A queued entry was
+ * already announced as a Miss when it was admitted, so it must not be
+ * announced again now that its eviction outcome is actually known. */
+static void begin_fill(cache_state* state, coher* coherence,
+                       cache_request* request, bool announce)
+{
+    bool waiting = cache_eviction_prepare(state, coherence, request);
+    if (announce)
+        trace_access(state, request, request->status == REQUEST_WAITING_EVICTION
+                     ? (request->target->dirty ? "Dirty Evict" : "Evict") : "Miss");
+    if (!waiting)
+        fetch(state, coherence, request);
+}
+
+static void start_entry(cache_state* state, coher* coherence,
+                        cache_write_buffer_entry* entry, bool announce)
+{
+    entry->started = true;
+    begin_fill(state, coherence, entry->request, announce);
+}
+
 static void start_miss(cache_state* state, coher* coherence,
                        cache_request* request)
 {
-    if (state->write_buffer != NULL)
+    uint64_t block = block_address(state, request->op.memAddress);
+
+    /* Modes 2+: an entry already filling this block serves the access
+     * directly (read from buffer / write coalescing), no new work needed. */
+    cache_write_buffer_entry* match = cache_write_buffer_find(state, block);
+    if (match != NULL)
     {
-        request->status = REQUEST_WAITING_BUFFER;
+        trace_access(state, request, "Hit");
+        request->status = REQUEST_READY;
         return;
     }
 
     if (cache_write_buffer_eligible(state, request))
     {
-        const char* error = cache_write_buffer_adopt(state);
-        if (error != NULL)
-            fail(error);
+        cache_write_buffer_entry* entry = cache_write_buffer_push(state, block);
+        if (entry == NULL)
+            fail("write buffer allocation failed");
+        if (state->write_buffer->head == entry)
+            start_entry(state, coherence, entry, true); /* Only entry: starts now. */
+        else
+        {
+            /* Queued behind another entry: still a miss now, but its own
+             * eviction is decided later, once it becomes the head - that
+             * later start must not announce this same access a second time. */
+            trace_access(state, request, "Miss");
+            entry->request->status = REQUEST_QUEUED;
+        }
+        return; /* The processor learns of the buffered write next tick. */
     }
 
-    bool waiting = cache_eviction_prepare(state, coherence, request);
-    trace_access(state, request, request->status == REQUEST_WAITING_EVICTION
-                 ? (request->target->dirty ? "Dirty Evict" : "Evict") : "Miss");
-    if (!waiting)
-        fetch(state, coherence, request);
+    if (state->write_buffer != NULL)
+    {
+        /* The buffer's head owns the single outstanding request; anything
+         * that can't be absorbed by the buffer must wait for a slot. */
+        request->status = REQUEST_WAITING_BUFFER;
+        return;
+    }
+
+    begin_fill(state, coherence, request, true);
 }
 
-/* Only the selected head performs lookup, replacement or lower requests. */
-static void start_next_block(cache_state* state, coher* coherence)
+/* Checks the tag array before falling back to the miss/buffer path. Used
+ * both for a freshly split block and for re-trying a request that was
+ * parked on the write buffer: the address it wants may have just been
+ * filled by the very entry that unblocked it. */
+static void resolve_request(cache_state* state, coher* coherence,
+                            cache_request* request)
 {
-    cache_request* request = cache_split_take(state);
-    state->active = request;
-    request->status = REQUEST_WAITING_DATA;
-    const trace_op* op = &request->op;
-
-    cache_line* line = cache_lookup(state, op->memAddress);
+    cache_line* line = cache_lookup(state, request->op.memAddress);
     if (line != NULL)
     {
         trace_access(state, request, "Hit");
@@ -100,6 +143,15 @@ static void start_next_block(cache_state* state, coher* coherence)
     }
 
     start_miss(state, coherence, request);
+}
+
+/* Only the selected head performs lookup, replacement or lower requests. */
+static void start_next_block(cache_state* state, coher* coherence)
+{
+    cache_request* request = cache_split_take(state);
+    state->active = request;
+    request->status = REQUEST_WAITING_DATA;
+    resolve_request(state, coherence, request);
 }
 
 static bool current_request_idle(const cache_state* state)
@@ -122,6 +174,25 @@ static void start_next_request(cache_state* state, coher* coherence)
     start_next_block(state, coherence);
 }
 
+/* Frees a retired head entry and lets whatever needed its slot proceed:
+ * the next queued write (if any) starts its own fetch, and a foreground
+ * access that was waiting on the buffer gets another try. */
+static void write_buffer_advance(cache_state* state, coher* coherence)
+{
+    cache_write_buffer_entry* next_entry = cache_write_buffer_pop_head(state);
+    if (next_entry != NULL)
+        /* Already announced as a Miss when it was admitted; don't repeat. */
+        start_entry(state, coherence, next_entry, false);
+
+    cache_request* foreground = state->active;
+    if (foreground != NULL && foreground->status == REQUEST_WAITING_BUFFER)
+        /* The entry that just freed this slot may have filled the very
+         * line this request wants; check for a hit before missing again. */
+        resolve_request(state, coherence, foreground);
+    else if (foreground == NULL)
+        start_next_request(state, coherence);
+}
+
 void cache_access_request(cache_state* state, coher* coherence,
                           const trace_op* op, int processor, int64_t tag,
                           void (*callback)(int, int64_t))
@@ -139,8 +210,10 @@ void cache_access_event(cache_state* state, coher* coherence, int type, int proc
                         uint64_t address)
 {
     cache_request* foreground = state->active;
-    cache_request* background = state->write_buffer == NULL
-        ? NULL : state->write_buffer->request;
+    /* Only the head entry is ever "started", so only it can be mid-flight. */
+    cache_write_buffer_entry* head_entry = state->write_buffer == NULL
+        ? NULL : state->write_buffer->head;
+    cache_request* background = head_entry == NULL ? NULL : head_entry->request;
     cache_request* request = NULL;
     if (foreground != NULL
         && foreground->status == REQUEST_WAITING_EVICTION
@@ -196,45 +269,41 @@ void cache_access_event(cache_state* state, coher* coherence, int type, int proc
     request->status = REQUEST_READY;
     if (request == background)
     {
-        cache_write_buffer* buffer = state->write_buffer;
-        buffer->data_complete = true;
-        if (buffer->processor_notified)
-        {
-            state->write_buffer = NULL;
-            free(request);
-            free(buffer);
-            if (foreground != NULL
-                && foreground->status == REQUEST_WAITING_BUFFER)
-                start_miss(state, coherence, foreground);
-            else if (foreground == NULL)
-                start_next_request(state, coherence);
-        }
+        head_entry->data_complete = true;
+        if (head_entry->processor_notified)
+            write_buffer_advance(state, coherence);
     }
 }
 
 void cache_access_tick(cache_state* state, coher* coherence)
 {
     bool acknowledged_buffer = false;
-    cache_write_buffer* buffer = state->write_buffer;
-    if (buffer != NULL && !buffer->processor_notified)
+    /* At most one entry is ever admitted-but-unacknowledged at a time: the
+     * next admission can't happen until this one's completion count (which
+     * shares state->completion with the foreground pipeline) is freed here. */
+    if (state->write_buffer != NULL)
     {
-        cache_request* buffered = buffer->request;
-        cache_split_complete_buffered(state, buffered);
-        buffer->processor_notified = true;
-        buffered->callback(buffered->processor, buffered->request_tag);
-        acknowledged_buffer = true;
-        if (buffer->data_complete)
+        for (cache_write_buffer_entry* entry = state->write_buffer->head;
+             entry != NULL; entry = entry->next)
         {
-            state->write_buffer = NULL;
-            free(buffered);
-            free(buffer);
-            start_next_request(state, coherence);
+            if (entry->processor_notified)
+                continue;
+            cache_split_complete_buffered(state, entry->request);
+            entry->processor_notified = true;
+            entry->request->callback(entry->request->processor,
+                                     entry->request->request_tag);
+            acknowledged_buffer = true;
+            /* The fill can race ahead of this notify tick; finish retiring. */
+            if (entry->data_complete && entry == state->write_buffer->head)
+                write_buffer_advance(state, coherence);
+            break;
         }
     }
 
     cache_request* request = state->active;
-    if (!acknowledged_buffer && state->write_buffer == NULL
-        && request != NULL
+    /* Independent hits (and buffer reads/coalesces, which also become
+     * REQUEST_READY) retire regardless of any buffered write in flight. */
+    if (!acknowledged_buffer && request != NULL
         && request->status == REQUEST_READY)
     {
         /* Detach before calling external code; this completion occurs once. */

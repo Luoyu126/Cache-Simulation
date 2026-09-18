@@ -34,7 +34,7 @@ typedef struct cache_state {
     struct cache_completion* completion; /* One original request's count entry. */
     struct original_request* request_queue_head; /* Owned arrival-order FIFO. */
     struct original_request* request_queue_tail;
-    struct cache_write_buffer* write_buffer; /* One background store miss. */
+    struct cache_write_buffer* write_buffer; /* FIFO of buffered stores (modes 1-3+). */
     uint64_t access_sequence;
 
     cache_policy policy;
