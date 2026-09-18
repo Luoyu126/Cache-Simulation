@@ -43,7 +43,9 @@ static cache_line* rrip_victim(cache_state* state, size_t set_index)
     uint64_t maximum = rrip_max(state);
     for (;;)
     {
-        for (size_t way = 0; way < state->E; ++way)
+        /* Ties at the max RRPV break toward the highest way index (matches
+         * the reference simulator's eviction order, confirmed empirically). */
+        for (size_t way = state->E; way-- > 0; )
         {
             cache_line* line = state->sets[set_index][way];
             if (line->time_stamp == maximum)
