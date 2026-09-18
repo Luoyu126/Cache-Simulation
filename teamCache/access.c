@@ -96,6 +96,42 @@ static void start_miss(cache_state* state, coher* coherence,
         return;
     }
 
+    /* Reference-simulator quirk (confirmed empirically against refCache): a
+     * later sub-block of a split access that would need to evict a valid
+     * line is instead treated as a no-op hit - nothing is fetched or
+     * replaced, so a later independent access to the same address misses
+     * again. Only the split's first sub-block evicts normally. Checked as a
+     * plain scan (not cache_replacement_target) so RRIP's aging fallback
+     * never runs as a side effect of merely checking for free space.
+     *
+     * A closer timing match (paying fetch latency, then discarding the
+     * result) was tried and rejected: it leaves the coherence component
+     * believing this cache still holds the address, since permReq was
+     * granted but never released. The next independent access to that same
+     * address then trips the "fetch while already granted" assertion in
+     * fetch() - a hard crash, on real traces essentially guaranteed to
+     * recur before the run ends. Completing instantly with no coherence
+     * traffic at all is the only safe option here, at the cost of slightly
+     * undercounting ticks for this rare case. */
+    if (request->block_index != 0)
+    {
+        uint64_t block_number = request->op.memAddress >> state->b;
+        size_t set_index = (size_t)(block_number & ((uint64_t)state->S - 1));
+        bool has_room = false;
+        for (size_t way = 0; way < state->E; ++way)
+            if (!state->sets[set_index][way]->valid)
+            {
+                has_room = true;
+                break;
+            }
+        if (!has_room)
+        {
+            trace_access(state, request, "Hit");
+            request->status = REQUEST_READY;
+            return;
+        }
+    }
+
     if (cache_write_buffer_eligible(state, request))
     {
         cache_write_buffer_entry* entry = cache_write_buffer_push(state, block);
