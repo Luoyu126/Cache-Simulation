@@ -139,15 +139,19 @@ static void start_miss(cache_state* state, coher* coherence,
      * plain scan (not cache_replacement_target) so RRIP's aging fallback
      * never runs as a side effect of merely checking for free space.
      *
-     * A closer timing match (paying fetch latency, then discarding the
-     * result) was tried and rejected: it leaves the coherence component
-     * believing this cache still holds the address, since permReq was
-     * granted but never released. The next independent access to that same
-     * address then trips the "fetch while already granted" assertion in
-     * fetch() - a hard crash, on real traces essentially guaranteed to
-     * recur before the run ends. Completing instantly with no coherence
-     * traffic at all is the only safe option here, at the cost of slightly
-     * undercounting ticks for this rare case. */
+     * A closer timing match (paying fetch latency via fetch(), discarding
+     * the result on arrival) was tried and measured against refCache on the
+     * real bzip2.trace: this instant-completion version already matches
+     * refCache's total tick count on that trace exactly (1,559,426 ticks,
+     * -i 0, both LRU and RRIP). The fetch-latency variant does fix a 2-tick
+     * gap on a single isolated occurrence, but a longer synthetic trace that
+     * revisits the same contended set after the phantom-filled address is
+     * genuinely evicted showed it diverging from refCache in a way this
+     * simpler version does not (refCache stops applying the quirk on a
+     * later occurrence in that scenario; the exact condition governing when
+     * is not understood). Given the simpler version is the one proven exact
+     * on the real trace, it is kept rather than trading a proven match for
+     * an unproven, more complex one. */
     if (request->block_index != 0)
     {
         uint64_t block_number = request->op.memAddress >> state->b;
@@ -285,50 +289,48 @@ void cache_access_event(cache_state* state, coher* coherence, int type, int proc
     cache_write_buffer_entry* head_entry = state->write_buffer == NULL
         ? NULL : state->write_buffer->head;
     cache_request* background = head_entry == NULL ? NULL : head_entry->request;
+
+    /* Find whichever of foreground/background this event is for, by asking
+     * what THAT request is currently waiting on rather than trusting the
+     * event's type alone: per cadss_public issue #17 ("DATA_RECV is more of
+     * an ACK that the permReq / invlReq is complete"), DATA_RECV is not
+     * exclusively a fetch acknowledgement - it can also ack a pending
+     * eviction's invlReq, in place of a separate FLUSH_COMPLETE/NO_ACTION. */
     cache_request* request = NULL;
-    if (foreground != NULL
-        && foreground->status == REQUEST_WAITING_EVICTION
-        && foreground->processor == processor
-        && foreground->victim_address == address)
+    if (foreground != NULL && foreground->processor == processor
+        && (foreground->status == REQUEST_WAITING_EVICTION
+            ? foreground->victim_address == address
+            : foreground->status == REQUEST_WAITING_DATA
+              && block_address(state, foreground->op.memAddress) == address))
         request = foreground;
-    if (background != NULL
-        && background->status == REQUEST_WAITING_EVICTION
-        && background->processor == processor
-        && background->victim_address == address)
+    if (background != NULL && background->processor == processor
+        && (background->status == REQUEST_WAITING_EVICTION
+            ? background->victim_address == address
+            : background->status == REQUEST_WAITING_DATA
+              && block_address(state, background->op.memAddress) == address))
     {
         if (request != NULL)
-            fail("eviction event matches foreground and write buffer");
+            fail("coherence event matches foreground and write buffer");
         request = background;
     }
-    bool matching_eviction = request != NULL;
-    if (type == FLUSH_COMPLETE || (type == NO_ACTION && matching_eviction))
+
+    if (type == NO_ACTION && request == NULL)
+        return; /* An eviction completed with nothing else pending on it. */
+    if (request == NULL)
+        fail("coherence event does not match any waiting request");
+
+    if (request->status == REQUEST_WAITING_EVICTION)
     {
-        if (!matching_eviction)
-            fail("eviction event does not match the waiting request");
+        if (type != FLUSH_COMPLETE && type != NO_ACTION && type != DATA_RECV)
+            fail("unsupported coherence event for a pending eviction");
         cache_eviction_complete(request);
         fetch(state, coherence, request);
         return;
     }
-    if (type == NO_ACTION)
-        return;
-    if (type != DATA_RECV)
-        fail("unsupported coherence event");
-    request = NULL;
-    if (foreground != NULL && foreground->status == REQUEST_WAITING_DATA
-        && foreground->processor == processor
-        && block_address(state, foreground->op.memAddress) == address)
-        request = foreground;
-    if (background != NULL && background->status == REQUEST_WAITING_DATA
-        && background->processor == processor
-        && block_address(state, background->op.memAddress) == address)
-    {
-        if (request != NULL)
-            fail("data event matches foreground and write buffer");
-        request = background;
-    }
-    if (request == NULL)
-        fail("data event does not match the waiting request");
 
+    /* Otherwise request->status == REQUEST_WAITING_DATA. */
+    if (type != DATA_RECV)
+        fail("unsupported coherence event for a pending fetch");
     complete_fetch(state, coherence, request, address);
 }
 
