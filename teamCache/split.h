@@ -3,27 +3,24 @@
 
 #include "access.h"
 
-/* One original request: at most two consecutive blocks, advanced by a cursor. */
+/* One keyed entry: Phase 05 accepts only one original processor request. */
 typedef struct cache_completion {
-    trace_op op;
     int processor;
     int64_t request_tag;
-    void (*callback)(int, int64_t);
-    uint64_t first_block;
-    uint64_t last_block;
     uint64_t total;
     uint64_t completed;
 } cache_completion;
 
-/* Record the original request and its one- or two-block range. NULL means success. */
+/* Build all parts before starting any access. NULL means success. */
 const char* cache_split_prepare(cache_state* state, const trace_op* op,
                                 int processor, int64_t tag,
                                 void (*callback)(int, int64_t));
 cache_request* cache_split_take(cache_state* state);
 /* Count one retired block; release the count entry if the original is done. */
 bool cache_split_complete(cache_state* state, const cache_request* request);
-/* Complete one buffered single-block store before its background data arrives. */
-void cache_split_complete_buffered(cache_state* state,
+/* Complete one buffered single-block store using its own (already-detached)
+ * completion tracker, not state->completion - see cache_write_buffer_push. */
+void cache_split_complete_buffered(cache_completion** completion,
                                    const cache_request* request);
 /* Free queued parts and the count entry; active is owned by access.c. */
 void cache_split_destroy(cache_state* state);
