@@ -247,6 +247,25 @@ static void start_next_request(cache_state* state, coher* coherence)
     if (error != NULL)
         fail(error);
     start_next_block(state, coherence);
+
+    /* If that request immediately became a buffered write, cache_write_buffer_
+     * push() just freed state->active (and, with its own completion tracker
+     * now detached, state->completion too): refCache's tick() detaches a
+     * buffer-eligible write into its own background slot and falls through,
+     * in that same tick, to pop and start the next queued request (confirmed
+     * via disassembly of its "jmp 2e07" write-buffer path) rather than
+     * leaving the foreground idle until the next tick. It only ever does
+     * this one extra hop per tick, so this is a single retry, not a loop. */
+    if (current_request_idle(state) && state->request_queue_head != NULL)
+    {
+        request = cache_request_take(state);
+        error = cache_split_prepare(state, &request->op,
+            request->processor, request->request_tag, request->callback);
+        free(request);
+        if (error != NULL)
+            fail(error);
+        start_next_block(state, coherence);
+    }
 }
 
 /* Frees a retired head entry and lets whatever needed its slot proceed:
@@ -338,8 +357,10 @@ void cache_access_tick(cache_state* state, coher* coherence)
 {
     bool acknowledged_buffer = false;
     /* At most one entry is ever admitted-but-unacknowledged at a time: the
-     * next admission can't happen until this one's completion count (which
-     * shares state->completion with the foreground pipeline) is freed here. */
+     * next admission can't happen until this one is notified below. Each
+     * entry owns its own completion tracker (detached from the foreground's
+     * at push time), so this no longer blocks the foreground pipeline from
+     * starting other requests while this notification is still pending. */
     if (state->write_buffer != NULL)
     {
         for (cache_write_buffer_entry* entry = state->write_buffer->head;
@@ -347,7 +368,7 @@ void cache_access_tick(cache_state* state, coher* coherence)
         {
             if (entry->processor_notified)
                 continue;
-            cache_split_complete_buffered(state, entry->request);
+            cache_split_complete_buffered(&entry->completion, entry->request);
             entry->processor_notified = true;
             entry->request->callback(entry->request->processor,
                                      entry->request->request_tag);

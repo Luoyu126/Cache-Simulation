@@ -2,6 +2,7 @@
 #define TEAM_CACHE_WRITE_BUFFER_H
 
 #include "access.h"
+#include "split.h"
 
 /*
  * One buffered store. Entries form a FIFO; only the head is ever "started"
@@ -12,6 +13,14 @@
 typedef struct cache_write_buffer_entry {
     uint64_t block_address;
     cache_request* request;  /* Owned until this entry retires. */
+    cache_completion* completion; /* Owned; this store's own dispatch-completion,
+                                    * detached from state->completion at push
+                                    * time so the foreground pipeline is free to
+                                    * start the next queued request right away
+                                    * instead of waiting for this entry's later
+                                    * processor notification (matches refCache's
+                                    * immediate write-buffer "detach" behavior,
+                                    * confirmed via disassembly). */
     bool started;            /* Eviction/fetch has been issued for this entry. */
     bool processor_notified; /* The owning access already returned to the processor. */
     bool data_complete;      /* The background fetch has filled the target line. */

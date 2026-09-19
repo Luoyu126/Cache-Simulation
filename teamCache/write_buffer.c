@@ -48,6 +48,14 @@ cache_write_buffer_entry* cache_write_buffer_push(cache_state* state,
     entry->block_address = block_address;
     entry->request = state->active;
     state->active = NULL;
+    /* Take ownership of the dispatch-completion tracker too, freeing
+     * state->completion right away: refCache detaches a buffer-eligible
+     * write into its own background slot and immediately lets the
+     * foreground pipeline start the next queued request in that same tick
+     * (confirmed via disassembly of its tick()/coherCallback write-buffer
+     * path), rather than waiting for this store's later notification. */
+    entry->completion = state->completion;
+    state->completion = NULL;
 
     if (state->write_buffer == NULL)
     {
@@ -55,6 +63,7 @@ cache_write_buffer_entry* cache_write_buffer_push(cache_state* state,
         if (state->write_buffer == NULL)
         {
             free(entry->request);
+            free(entry->completion);
             free(entry);
             return NULL;
         }
@@ -76,6 +85,7 @@ cache_write_buffer_entry* cache_write_buffer_pop_head(cache_state* state)
     state->write_buffer->head = head->next;
     --state->write_buffer->count;
     free(head->request);
+    free(head->completion); /* Normally already NULL by the time this retires. */
     free(head);
 
     if (state->write_buffer->head == NULL)
@@ -96,6 +106,7 @@ void cache_write_buffer_destroy(cache_state* state)
     {
         cache_write_buffer_entry* next = entry->next;
         free(entry->request);
+        free(entry->completion);
         free(entry);
         entry = next;
     }
