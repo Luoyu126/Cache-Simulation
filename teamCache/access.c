@@ -27,14 +27,49 @@ static void mark_dirty(cache_line* line, enum op_type op)
         line->dirty = true;
 }
 
+/* Defined further down; forward-declared so fetch() can call it when
+ * permReq completes synchronously instead of via a later DATA_RECV. */
+static void write_buffer_advance(cache_state* state, coher* coherence);
+
+/* Fills request->target with the data that just arrived for address, and
+ * lets write-buffer bookkeeping react if this was the buffered background
+ * entry. Shared by the immediate-grant path in fetch() and the deferred
+ * DATA_RECV path in cache_access_event(), since permReq can resolve either
+ * way per the coherence interface contract. */
+static void complete_fetch(cache_state* state, coher* coherence,
+                           cache_request* request, uint64_t address)
+{
+    cache_line* line = request->target;
+    if (line == NULL || line->valid)
+        fail("fill target is not available");
+    line->tag = (address >> state->b) >> state->s;
+    line->dirty = false;
+    cache_replacement_fill(state, line);
+    mark_dirty(line, request->op.op);
+    line->valid = true;
+    request->status = REQUEST_READY;
+
+    cache_write_buffer_entry* head_entry = state->write_buffer == NULL
+        ? NULL : state->write_buffer->head;
+    if (head_entry != NULL && head_entry->request == request)
+    {
+        head_entry->data_complete = true;
+        if (head_entry->processor_notified)
+            write_buffer_advance(state, coherence);
+    }
+}
+
 static void fetch(cache_state* state, coher* coherence, cache_request* request)
 {
     request->status = REQUEST_WAITING_DATA;
     if (coherence == NULL || coherence->permReq == NULL)
         fail("missing coherence request interface");
-    if (coherence->permReq(false, block_address(state, request->op.memAddress),
-                           request->processor))
-        fail("lookup miss but coherence already grants permission; check state consistency");
+    uint64_t address = block_address(state, request->op.memAddress);
+    /* Per the coherence interface: true means permission is granted right
+     * now (no DATA_RECV will follow) and the cache can proceed immediately;
+     * false means the request is queued and a later DATA_RECV completes it. */
+    if (coherence->permReq(false, address, request->processor))
+        complete_fetch(state, coherence, request, address);
 }
 
 static void trace_access(const cache_state* state, const cache_request* request,
@@ -294,21 +329,7 @@ void cache_access_event(cache_state* state, coher* coherence, int type, int proc
     if (request == NULL)
         fail("data event does not match the waiting request");
 
-    cache_line* line = request->target;
-    if (line == NULL || line->valid)
-        fail("fill target is not available");
-    line->tag = (address >> state->b) >> state->s;
-    line->dirty = false;
-    cache_replacement_fill(state, line);
-    mark_dirty(line, request->op.op);
-    line->valid = true;
-    request->status = REQUEST_READY;
-    if (request == background)
-    {
-        head_entry->data_complete = true;
-        if (head_entry->processor_notified)
-            write_buffer_advance(state, coherence);
-    }
+    complete_fetch(state, coherence, request, address);
 }
 
 void cache_access_tick(cache_state* state, coher* coherence)
