@@ -356,27 +356,28 @@ void cache_access_event(cache_state* state, coher* coherence, int type, int proc
 void cache_access_tick(cache_state* state, coher* coherence)
 {
     bool acknowledged_buffer = false;
-    /* At most one entry is ever admitted-but-unacknowledged at a time: the
-     * next admission can't happen until this one is notified below. Each
-     * entry owns its own completion tracker (detached from the foreground's
-     * at push time), so this no longer blocks the foreground pipeline from
-     * starting other requests while this notification is still pending. */
+    /* The processor is notified of a buffered write only once its background
+     * fetch actually finishes (data_complete), not merely once it is
+     * admitted: refCache's own buffered-write latency (confirmed empirically
+     * against the real long.trace: teamCache ran a constant ~97 ticks faster
+     * per buffered write before this fix, regardless of how many independent
+     * accesses followed it) matches an ordinary miss's full round trip. The
+     * write buffer's actual benefit is that OTHER, later requests do not have
+     * to wait behind this one (see start_next_request's single retry and the
+     * detached per-entry completion above) - not that this store itself
+     * skips its own memory latency. Only the head entry is ever "started",
+     * so it is the only one that can ever be data_complete. */
     if (state->write_buffer != NULL)
     {
-        for (cache_write_buffer_entry* entry = state->write_buffer->head;
-             entry != NULL; entry = entry->next)
+        cache_write_buffer_entry* head = state->write_buffer->head;
+        if (head != NULL && !head->processor_notified && head->data_complete)
         {
-            if (entry->processor_notified)
-                continue;
-            cache_split_complete_buffered(&entry->completion, entry->request);
-            entry->processor_notified = true;
-            entry->request->callback(entry->request->processor,
-                                     entry->request->request_tag);
+            cache_split_complete_buffered(&head->completion, head->request);
+            head->processor_notified = true;
+            head->request->callback(head->request->processor,
+                                    head->request->request_tag);
             acknowledged_buffer = true;
-            /* The fill can race ahead of this notify tick; finish retiring. */
-            if (entry->data_complete && entry == state->write_buffer->head)
-                write_buffer_advance(state, coherence);
-            break;
+            write_buffer_advance(state, coherence);
         }
     }
 
