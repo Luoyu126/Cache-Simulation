@@ -6,6 +6,203 @@
 - Implementation: Not started
 - Acceptance: Not run
 
+## Active Investigation: Gradescope bzip2 Differential
+
+The student reported partial credit (`6.95/9.09`) for both
+`cache/lru/bzip2` and `cache/rrip/bzip2`: `teamCache` completes the same
+work with a small tick-count difference from `refCache`. The exact hidden
+configuration, trace, verbose output, and expected/observed tick counts are
+not visible in the repository, and the linked Gradescope result requires an
+authenticated session that is unavailable to the agent.
+
+Current scope is diagnostic only: infer likely hidden scenarios from the test
+names, construct reference-differential traces, reduce any mismatch to an MRE,
+and explain the responsible state/timing transition. No cache-policy change is
+authorized by this investigation alone.
+
+Evidence and hypotheses to check:
+
+- `Open`: because LRU and RRIP receive the same partial score, first inspect
+  shared request, split-access, eviction, and callback timing before blaming
+  policy-specific victim selection.
+- `Open`: commit `27c40e0` claims both policies match a local real
+  `bzip2.trace` at 1,559,426 ticks, but that trace and its exact configuration
+  are absent here, so the claim is not yet independently reproducible.
+- `Open`: the new full-set/later-split-block special case in
+  `teamCache/access.c` deliberately reports an instantaneous no-op hit. It may
+  match one reference quirk while hiding a different state transition on
+  subsequent accesses.
+- `Open`: hidden tests may use a configuration different from the one behind
+  the 1,559,426-tick claim, including associativity, write-buffer mode, or RRIP
+  width.
+
+The reusable probe is `experiments/scripts/differential_probe.py`. It compares
+exit status, total ticks, and normalized verbose access classifications for the
+same generated trace under both simulators, then greedily removes operations
+from mismatching traces while preserving the mismatch.
+
+### Reproduced MREs and Version Split
+
+Repository state at investigation time:
+
+- `origin/submission` is still `1041e4b`; this is the likely implementation
+  represented by the existing Gradescope result, although the submission page
+  did not expose its uploaded commit.
+- `origin/develop` is `27c40e0`, Ziqi's later replacement of `teamCache`.
+  This version has not been merged into `submission` or `master`.
+
+`tests/teamCache/bzip2_split_full_set.trace` fills both ways of set zero and
+then issues a two-line access whose second block maps to that full set:
+
+```text
+L 0,1
+L 40,1
+L 1f,2
+```
+
+Both `bzip2_split_lru.config` and `bzip2_split_rrip.config` reproduce the same
+policy-independent result:
+
+| implementation | total ticks | final split classification |
+| --- | ---: | --- |
+| submitted `1041e4b` | 505 | `0x20 is also a Evict` |
+| current `27c40e0` | 305 | `0x20 is also a Hit` |
+| `refCache` | 404 | `0x20 is also a Hit` |
+
+This is a strong local analogue for a submitted simulator modestly exceeding
+the reference tick count on both LRU and RRIP. The old implementation performs
+an ordinary eviction and fill for the later split block; the reference spends
+approximately one lower-level round trip less.
+
+Appending `L 20,1` (`bzip2_split_full_set_followup.trace`) gives 507 ticks for
+both old and current `teamCache`, versus 505 for `refCache`. The classifications
+also reveal different retained state: old `teamCache` calls the follow-up a
+hit, current `teamCache` calls it an eviction, and `refCache` calls it an
+eviction. The evidence is consistent with this reference-specific sequence:
+
+1. choose/invalidate a victim for the later split block;
+2. wait for that invalidation;
+3. label the block as `also a Hit` and complete the original access without a
+   normal replacement fill;
+4. retain cache metadata that makes the later independent access attempt an
+   eviction again, while coherence already considers the victim invalid.
+
+Step 3/4 is an inference from differential timing and classifications, not a
+documented assignment rule. Disassembly confirms that `refCache` has a
+dedicated `twoBlocks` field/path, but does not by itself make this behavior a
+required architecture policy.
+
+The special case added in `27c40e0` (`teamCache/access.c`, the
+`block_index != 0 && !has_room` branch) skips both eviction and fetch and marks
+the subrequest ready immediately. It fixes the verbose label and changes the
+old +101-tick isolated error into a -99-tick error; it does not reproduce the
+reference state transition. The source comment reports exact aggregate ticks
+on the author's unavailable real `bzip2.trace`, so this may be a trace-specific
+compensation rather than a generally correct model.
+
+### Controls and Secondary Hypothesis
+
+- The local 286,966-access Cache Lab `long.trace` contains zero accesses that
+  cross a 16-byte line. With `s=8,E=16,b=4,i=0,w=0`, current `teamCache` and
+  `refCache` match exactly: 1,800,837 LRU ticks and 1,802,237 RRIP ticks.
+  This control strengthens the split-access hypothesis but cannot substitute
+  for the unavailable official `bzip2.trace`.
+- The handout's sample `ex_rrip.config` contains `-i 4`, even though Fall 2026
+  says victim cache is not evaluated. On local `long.trace`, current
+  `teamCache` (which intentionally ignores `-i 4`) takes 1,802,237 ticks while
+  `refCache` takes 1,801,124. If the hidden bzip2 test copied that sample flag,
+  unsupported victim-cache behavior is a second possible source. The course
+  specification makes this less likely than the split-path explanation.
+- A real resolution needs the exact Gradescope configuration and official
+  `bzip2.trace`, or at least their verbose/tick outputs. Without them, do not
+  claim that either the old complete-fill model or the new instant-hit model
+  is globally reference-equivalent.
+
+### Investigation Commands and Results
+
+- Built `27c40e0` in `/tmp/cadss-bzip-build`; required component targets pass.
+- Archived and independently built `origin/submission` (`1041e4b`) in
+  `/tmp/cadss-submission-old` without changing the checked-out branch.
+- Ran the four checked-in split traces against LRU and RRIP configurations for
+  old `teamCache`, current `teamCache`, and `refCache`; the results above repeat
+  for both policies.
+- Ran `experiments/scripts/differential_probe.py` with 300 seeded generated
+  cases per valid configuration. It independently reduced discrepancies to
+  crossing-line requests and found the same classification/state differences
+  under both LRU and RRIP when invalid ways remain.
+- The linked Gradescope page could not be read without its authenticated
+  session; no hidden expected/actual output was assumed.
+
+### Experimental Optimization Branch
+
+`Confirmed` by the student's request: branch
+`fix/bzip2-split-reference-timing` will model the inferred reference behavior
+instead of either the submitted full fill or `27c40e0`'s instantaneous no-op.
+This is an explicitly reference-compatibility behavior for a later block of a
+split access whose destination set is full; ordinary accesses and split blocks
+with an invalid target retain their existing behavior.
+
+Confirmed behavioral pseudocode:
+
+```text
+on a miss for block_index > 0 when the destination set is full:
+    select the policy's normal victim
+    reconstruct and retain the victim address
+    report the split block as Hit, matching refCache output
+    issue invlReq for the victim
+    if invalidation is asynchronous:
+        wait in a distinct split-eviction-only state
+    when invalidation is complete:
+        preserve the victim line's cache metadata as-is
+        do not issue permReq and do not install the requested block
+        mark the split block ready for normal next-tick retirement
+```
+
+The distinct state is required so a normal eviction acknowledgement still
+invalidates the victim and starts a fetch, while this compatibility path does
+neither. RRIP victim selection may perform its normal aging while searching;
+no replacement hit/fill update is applied afterward. Acceptance targets are
+404 ticks for `bzip2_split_full_set.trace` and 505 ticks for
+`bzip2_split_full_set_followup.trace`, under both checked-in LRU and RRIP
+configurations, with the same verbose classifications as `refCache`.
+
+`Implemented` on the experimental branch:
+
+- `teamCache/access.h` adds `REQUEST_WAITING_SPLIT_EVICTION` so the event
+  handler can distinguish this path from an ordinary eviction.
+- `teamCache/access.c::begin_split_eviction_only` selects the normal LRU/RRIP
+  victim, sends its invalidation, handles immediate completion, and deliberately
+  leaves the line metadata unchanged.
+- `cache_access_event` recognizes asynchronous acknowledgements for the new
+  state and transitions directly to `REQUEST_READY` without calling
+  `cache_eviction_complete` or `fetch`.
+- `tests/teamCache/bzip2_split_reference_test.py` compares complete verbose
+  output and ticks with `refCache` for LRU and RRIP across delayed invalidation,
+  clean and dirty victims, later independent reuse, and repeated split
+  access/immediate invalidation.
+
+Observed acceptance results:
+
+| trace | LRU team/ref | RRIP team/ref |
+| --- | ---: | ---: |
+| `bzip2_split_full_set.trace` | 404 / 404 | 404 / 404 |
+| `bzip2_split_dirty_full_set.trace` | 404 / 404 | 404 / 404 |
+| `bzip2_split_full_set_followup.trace` | 505 / 505 | 505 / 505 |
+| `bzip2_split_repeat.trace` | 407 / 407 | 407 / 407 |
+
+The focused test passes all eight comparisons. Existing engine controls remain
+exact: Phase 03 one-hit is 104 ticks, Phase 04 clean eviction is 506 ticks,
+local `long.trace` LRU is 1,800,837 ticks, and local `long.trace` RRIP is
+1,802,237 ticks for both simulators.
+
+The historical Phase 01/02/05--08 harness sources do not compile against
+`27c40e0`'s replaced lazy-storage/split/write-buffer interfaces. Phase 03 and
+Phase 04 compile but fail identically on an archived unmodified `27c40e0`
+baseline and on this branch. These are pre-existing test/implementation drift,
+not regressions introduced by the split-eviction state. They remain a Phase 09
+test-maintenance follow-up; the engine-level controls above are authoritative
+for this scoped optimization.
+
 ## Purpose of This Handoff
 
 This document hands the completed cache implementation to the teammate

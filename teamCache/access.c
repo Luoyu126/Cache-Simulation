@@ -116,6 +116,31 @@ static void start_entry(cache_state* state, coher* coherence,
     begin_fill(state, coherence, entry->request, announce);
 }
 
+/* refCache treats an eviction needed by a later split block as an
+ * invalidation-only operation: it waits for the victim transaction but does
+ * not fetch/install the requested block afterward. Keep this state distinct
+ * from an ordinary eviction so its acknowledgement cannot fall through to
+ * fetch(). */
+static void begin_split_eviction_only(cache_state* state, coher* coherence,
+                                      cache_request* request,
+                                      size_t set_index)
+{
+    cache_line* victim = cache_replacement_target(state, set_index);
+    if (!victim->valid)
+        fail("split eviction-only path requires a full set");
+
+    request->target = victim;
+    request->victim_address = ((victim->tag << state->s)
+                               | (uint64_t)set_index) << state->b;
+    request->status = REQUEST_WAITING_SPLIT_EVICTION;
+    trace_access(state, request, "Hit");
+
+    if (coherence == NULL || coherence->invlReq == NULL)
+        fail("missing coherence eviction interface");
+    if (!coherence->invlReq(request->victim_address, request->processor))
+        request->status = REQUEST_READY;
+}
+
 static void start_miss(cache_state* state, coher* coherence,
                        cache_request* request)
 {
@@ -131,27 +156,9 @@ static void start_miss(cache_state* state, coher* coherence,
         return;
     }
 
-    /* Reference-simulator quirk (confirmed empirically against refCache): a
-     * later sub-block of a split access that would need to evict a valid
-     * line is instead treated as a no-op hit - nothing is fetched or
-     * replaced, so a later independent access to the same address misses
-     * again. Only the split's first sub-block evicts normally. Checked as a
-     * plain scan (not cache_replacement_target) so RRIP's aging fallback
-     * never runs as a side effect of merely checking for free space.
-     *
-     * A closer timing match (paying fetch latency via fetch(), discarding
-     * the result on arrival) was tried and measured against refCache on the
-     * real bzip2.trace: this instant-completion version already matches
-     * refCache's total tick count on that trace exactly (1,559,426 ticks,
-     * -i 0, both LRU and RRIP). The fetch-latency variant does fix a 2-tick
-     * gap on a single isolated occurrence, but a longer synthetic trace that
-     * revisits the same contended set after the phantom-filled address is
-     * genuinely evicted showed it diverging from refCache in a way this
-     * simpler version does not (refCache stops applying the quirk on a
-     * later occurrence in that scenario; the exact condition governing when
-     * is not understood). Given the simpler version is the one proven exact
-     * on the real trace, it is kept rather than trading a proven match for
-     * an unproven, more complex one. */
+    /* Reference-simulator quirk: a later split block facing a full set waits
+     * for the selected victim's invalidation, reports Hit, and completes
+     * without fetching or installing the requested block. */
     if (request->block_index != 0)
     {
         uint64_t block_number = request->op.memAddress >> state->b;
@@ -165,8 +172,7 @@ static void start_miss(cache_state* state, coher* coherence,
             }
         if (!has_room)
         {
-            trace_access(state, request, "Hit");
-            request->status = REQUEST_READY;
+            begin_split_eviction_only(state, coherence, request, set_index);
             return;
         }
     }
@@ -317,13 +323,15 @@ void cache_access_event(cache_state* state, coher* coherence, int type, int proc
      * eviction's invlReq, in place of a separate FLUSH_COMPLETE/NO_ACTION. */
     cache_request* request = NULL;
     if (foreground != NULL && foreground->processor == processor
-        && (foreground->status == REQUEST_WAITING_EVICTION
+        && ((foreground->status == REQUEST_WAITING_EVICTION
+             || foreground->status == REQUEST_WAITING_SPLIT_EVICTION)
             ? foreground->victim_address == address
             : foreground->status == REQUEST_WAITING_DATA
               && block_address(state, foreground->op.memAddress) == address))
         request = foreground;
     if (background != NULL && background->processor == processor
-        && (background->status == REQUEST_WAITING_EVICTION
+        && ((background->status == REQUEST_WAITING_EVICTION
+             || background->status == REQUEST_WAITING_SPLIT_EVICTION)
             ? background->victim_address == address
             : background->status == REQUEST_WAITING_DATA
               && block_address(state, background->op.memAddress) == address))
@@ -338,10 +346,16 @@ void cache_access_event(cache_state* state, coher* coherence, int type, int proc
     if (request == NULL)
         fail("coherence event does not match any waiting request");
 
-    if (request->status == REQUEST_WAITING_EVICTION)
+    if (request->status == REQUEST_WAITING_EVICTION
+        || request->status == REQUEST_WAITING_SPLIT_EVICTION)
     {
         if (type != FLUSH_COMPLETE && type != NO_ACTION && type != DATA_RECV)
             fail("unsupported coherence event for a pending eviction");
+        if (request->status == REQUEST_WAITING_SPLIT_EVICTION)
+        {
+            request->status = REQUEST_READY;
+            return;
+        }
         cache_eviction_complete(request);
         fetch(state, coherence, request);
         return;
